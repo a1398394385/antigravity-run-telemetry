@@ -475,6 +475,7 @@ app.api('/api/telemetry', async (data) => {
     updatedAt: maxMtime || Date.now(),
     ...mainData.parsed,
     mainSummary: summarizeRunsList(mainData.parsed.runs),
+    subagentsSummary: summarizeRunsList(children.flatMap((c) => c.runs)),
     combinedSummary: summarizeRunsList(allRuns),
     children,
   };

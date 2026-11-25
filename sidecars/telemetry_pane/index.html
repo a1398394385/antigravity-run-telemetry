@@ -488,6 +488,25 @@
       font-weight: 600;
     }
 
+    .expand-btn {
+      width: 100%;
+      margin-top: 6px;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--rt-muted);
+      font-family: var(--rt-sans);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .expand-btn:hover {
+      background: var(--rt-surface-hover);
+      color: var(--rt-text);
+    }
     .notice {
       font-size: 11px;
       color: var(--rt-muted);
@@ -511,8 +530,9 @@
   <script>
     const $app = document.getElementById('app');
     let activeTab = 'session'; // 'session' | 'daily'
-    let selectionMode = 'all'; // 'all' | 'latest' | 'single'
-    let selectedRunIndex = null;
+    let selectionMode = 'all'; // 'all' | 'main' | 'subagents'
+    let lastSessionData = null;
+    const expandedCards = new Set();
     let lastHash = '';
     let selectedDate = todayDateStr();
     let lastDailyHash = '';
@@ -686,8 +706,12 @@
       `;
     }
 
-    function renderRunBlockHtml(r, badgeText) {
-      const stepsHtml = (r.steps || []).slice().reverse().map(s => {
+    function renderRunBlockHtml(r, badgeText, cardKey) {
+      const reversedSteps = (r.steps || []).slice().reverse();
+      const isExpanded = expandedCards.has(cardKey);
+      const hasMore = reversedSteps.length > 3;
+      const visibleSteps = (!hasMore || isExpanded) ? reversedSteps : reversedSteps.slice(0, 3);
+      const stepsHtml = visibleSteps.map(s => {
         const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
         const tps = s.tps !== null ? `${s.tps} t/s` : '—';
         const tok = [
@@ -735,6 +759,10 @@
       ].join('');
       const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
 
+      const toggleBtnHtml = hasMore
+        ? `<button type="button" class="expand-btn" data-card-key="${escapeHtml(cardKey)}">${isExpanded ? '收起历史 steps' : `展开其余 ${reversedSteps.length - 3} 个 steps`}</button>`
+        : '';
+
       return `
         <div class="card steps-card">
           <div class="run-block-head">
@@ -754,11 +782,13 @@
             </div>
           </div>
           <div class="step-list">${stepsHtml}</div>
+          ${toggleBtnHtml}
         </div>
       `;
     }
 
     function render(data) {
+      lastSessionData = data;
       if (!data || !data.found || !data.runs || data.runs.length === 0) {
         $app.innerHTML = `${renderNavBarHtml()}<div class="empty">当前对话暂无模型调用记录。</div>`;
         bindNavBar();
@@ -770,54 +800,20 @@
       const hasChildren = children.length > 0;
       const latestRun = runs[runs.length - 1];
       let run;
-      if (selectionMode === 'all') {
-        run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
-      } else if (selectionMode === 'main') {
+      if (selectionMode === 'main') {
         run = data.mainSummary || latestRun;
-      } else if (selectionMode === 'child') {
-        const ch = children.find(c => c.conversationId === selectedRunIndex);
-        if (ch) {
-          run = ch.summary;
-        } else {
-          selectionMode = 'all';
-          run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
-        }
-      } else if (selectionMode === 'single' && runs.some(r => r.runIndex === selectedRunIndex)) {
-        run = runs.find(r => r.runIndex === selectedRunIndex);
+      } else if (selectionMode === 'subagents') {
+        run = data.subagentsSummary || { stepCount: 0, timedSteps: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, totalTokens: 0, cacheHitRate: 0, avgLatencyMs: null, effectiveTps: null, costUsd: null, isRunning: false };
       } else {
-        selectionMode = 'latest';
-        selectedRunIndex = latestRun.runIndex;
-        run = latestRun;
+        selectionMode = 'all';
+        run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
       }
 
-      const headOptions = [
-        hasChildren
-          ? `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All (Main + ${children.length} Subagents/Swarm)</option>`
-          : `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All Runs (Session · ${runs.length} runs)</option>`,
-        hasChildren
-          ? `<option value="main" ${selectionMode === 'main' ? 'selected' : ''}>Main Session Only (${runs.length} runs)</option>`
-          : '',
-        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Main Run (Auto) · #${latestRun.runIndex}</option>`,
+      const optionsHtml = [
+        `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All (${runs.length} runs${hasChildren ? ` + ${children.length} subagents` : ''})</option>`,
+        `<option value="main" ${selectionMode === 'main' ? 'selected' : ''}>Main Only (${runs.length} runs)</option>`,
+        `<option value="subagents" ${selectionMode === 'subagents' ? 'selected' : ''}>Subagent Only (${children.length})</option>`,
       ].join('');
-      const mainOptions = runs
-        .slice()
-        .reverse()
-        .map(r => {
-          const label = `#${r.runIndex} · ${r.promptPreview || 'Run'} (${r.stepCount} steps)`;
-          const sel = selectionMode === 'single' && r.runIndex === run.runIndex ? 'selected' : '';
-          return `<option value="${r.runIndex}" ${sel}>${escapeHtml(label)}</option>`;
-        })
-        .join('');
-      const childOptions = children
-        .map(c => {
-          const prefix = c.kind === 'swarm' ? 'Swarm' : 'Subagent';
-          const label = `${prefix} · ${c.label} (${c.summary.stepCount} steps)`;
-          const val = `child:${c.conversationId}`;
-          const sel = selectionMode === 'child' && selectedRunIndex === c.conversationId ? 'selected' : '';
-          return `<option value="${escapeHtml(val)}" ${sel}>${escapeHtml(label)}</option>`;
-        })
-        .join('');
-      const optionsHtml = headOptions + mainOptions + childOptions;
 
       const renderChildCard = (c) => {
         const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
@@ -834,25 +830,22 @@
           totalTokens: c.summary.totalTokens,
           steps: allChildSteps,
         };
-        return renderRunBlockHtml(mergedChildRun, tag);
+        return renderRunBlockHtml(mergedChildRun, tag, `child-${c.conversationId}`);
       };
 
       let listBlocksHtml = '';
       if (selectionMode === 'all') {
-        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '')).join('') +
+        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '', `main-${r.runIndex}`)).join('') +
           children.map(renderChildCard).join('');
       } else if (selectionMode === 'main') {
-        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '')).join('');
-      } else if (selectionMode === 'latest') {
-        listBlocksHtml = renderRunBlockHtml(latestRun, '');
-      } else if (selectionMode === 'single') {
-        listBlocksHtml = renderRunBlockHtml(run, '');
-      } else if (selectionMode === 'child') {
-        const ch = children.find(c => c.conversationId === selectedRunIndex);
-        listBlocksHtml = ch ? renderChildCard(ch) : '';
+        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '', `main-${r.runIndex}`)).join('');
+      } else if (selectionMode === 'subagents') {
+        listBlocksHtml = children.length > 0
+          ? children.map(renderChildCard).join('')
+          : '<div class="empty">当前会话暂无 Subagent 或 Swarm 记录。</div>';
       }
 
-      const timingNotice = run.timedSteps === 0
+      const timingNotice = run.stepCount > 0 && run.timedSteps === 0
         ? `<div class="notice">此轮暂无 Hook 毫秒计时（可能发生在插件启用前，或正在首步等待中）。</div>`
         : '';
 
@@ -875,19 +868,19 @@
       `;
 
       bindNavBar();
+      document.querySelectorAll('.expand-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-card-key');
+          if (!key) return;
+          if (expandedCards.has(key)) expandedCards.delete(key);
+          else expandedCards.add(key);
+          if (lastSessionData) render(lastSessionData);
+        });
+      });
       const selEl = document.getElementById('run-select');
       if (selEl) {
         selEl.addEventListener('change', (e) => {
-          const val = e.target.value;
-          if (val === 'latest' || val === 'all' || val === 'main') {
-            selectionMode = val;
-          } else if (val.startsWith('child:')) {
-            selectionMode = 'child';
-            selectedRunIndex = val.slice(6);
-          } else {
-            selectionMode = 'single';
-            selectedRunIndex = Number(val);
-          }
+          selectionMode = e.target.value;
           lastHash = '';
           pollSession();
         });
@@ -1004,7 +997,7 @@
         const data = await res.json();
         if (activeTab !== 'session') return;
         const latest = data.runs?.[data.runs.length - 1];
-        const hash = `${data.updatedAt}:${selectionMode}:${selectedRunIndex}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.children?.length || 0}:${data.combinedSummary?.totalTokens || 0}:${data.isRunning ? 1 : 0}`;
+        const hash = `${data.updatedAt}:${selectionMode}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.children?.length || 0}:${data.combinedSummary?.totalTokens || 0}:${data.isRunning ? 1 : 0}`;
         if (hash !== lastHash) {
           lastHash = hash;
           render(data);
