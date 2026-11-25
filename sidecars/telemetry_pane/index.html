@@ -762,7 +762,7 @@
                 <div class="step-top">
                   <div class="step-title">
                     <span class="step-idx">#${s.stepIndex ?? '?'}</span>
-                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.baseModel || s.model)}</span>
+                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.displayName || s.baseModel || s.model)}</span>
                     ${thinkingPillHtml(s.thinkingLevel)}
                   </div>
                   ${pillHtml}
@@ -884,8 +884,7 @@
                   <div class="step-row">
                     <div class="step-top">
                       <div class="step-title">
-                        <span class="step-model" title="${escapeHtml(m.model)}">${escapeHtml(m.model)}</span>
-                        ${(m.thinkingLevels || []).map(thinkingPillHtml).join('')}
+                        <span class="step-model" title="${escapeHtml(m.model)}">${escapeHtml(m.displayName || m.model)}</span>
                         <span class="step-idx">${m.stepCount} steps · ${m.sessionCount} sess</span>
                       </div>
                       ${pillHtml}

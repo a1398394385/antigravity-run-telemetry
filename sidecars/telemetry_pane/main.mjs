@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Response, SidecarApp } from 'sidecar_sdk';
-import { buildSessionDailyBuckets, parseRuns, readJsonl, toLocalDateKey } from '../../lib/telemetry.mjs';
+import { buildSessionDailyBuckets, formatModelDisplayName, parseRuns, readJsonl, toLocalDateKey } from '../../lib/telemetry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ID_RE = /^[0-9a-f-]{8,}$/i;
@@ -220,6 +220,7 @@ function computeDailySummary(targetDate) {
   const models = Array.from(modelMap.entries())
     .map(([model, { acc, sessionIds, thinkingLevels }]) => ({
       model,
+      displayName: formatModelDisplayName(model),
       thinkingLevels: Array.from(thinkingLevels),
       ...finalizeMetrics(acc, sessionIds.size),
     }))
