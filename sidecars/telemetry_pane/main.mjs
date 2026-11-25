@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SidecarApp } from 'sidecar_sdk';
+import { Response, SidecarApp } from 'sidecar_sdk';
 import { parseRuns, readJsonl } from '../../lib/telemetry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -46,7 +46,10 @@ function resolveLogsDir(convId) {
 
 const app = new SidecarApp();
 
-app.page('/', () => readFileSync(join(__dirname, 'index.html'), 'utf-8'));
+app.page('/', () => new Response(readFileSync(join(__dirname, 'index.html'), 'utf-8'), {
+  contentType: 'text/html; charset=utf-8',
+  headers: { 'Cache-Control': 'no-store' },
+}));
 
 app.api('/api/telemetry', (data) => {
   const convId = data.conversationId || app.config.conversationId || '';
