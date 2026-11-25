@@ -394,6 +394,7 @@
 
   <script>
     const $app = document.getElementById('app');
+    let selectionMode = 'latest'; // 'latest' | 'all' | 'single'
     let selectedRunIndex = null;
     let lastHash = '';
 
@@ -476,23 +477,62 @@
       }
 
       const runs = data.runs;
-      const latestIndex = runs[runs.length - 1].runIndex;
-      if (selectedRunIndex === null || !runs.some(r => r.runIndex === selectedRunIndex)) {
-        selectedRunIndex = latestIndex;
+      const latestRun = runs[runs.length - 1];
+      let run;
+      if (selectionMode === 'all') {
+        let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, timedSteps = 0, weightedMs = 0, weightedOut = 0, costUsd = 0, hasCost = false;
+        for (const r of runs) {
+          inputTokens += r.inputTokens;
+          outputTokens += r.outputTokens;
+          cacheReadTokens += r.cacheReadTokens;
+          if (r.costUsd !== null && r.costUsd !== undefined) { costUsd += r.costUsd; hasCost = true; }
+          for (const s of r.steps) {
+            if (s.latencyMs !== null && s.latencyMs > 0) {
+              timedSteps += 1;
+              weightedMs += s.latencyMs;
+              weightedOut += s.outputTokens;
+            }
+          }
+        }
+        const totalTokens = inputTokens + outputTokens + cacheReadTokens;
+        const cacheDenom = inputTokens + cacheReadTokens;
+        run = {
+          runIndex: 0,
+          stepCount: runs.reduce((a, r) => a + r.stepCount, 0),
+          timedSteps,
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          totalTokens,
+          costUsd: hasCost ? costUsd : null,
+          cacheHitRate: cacheDenom > 0 ? Number(((cacheReadTokens / cacheDenom) * 100).toFixed(1)) : 0,
+          avgLatencyMs: timedSteps > 0 ? Math.round(weightedMs / timedSteps) : null,
+          effectiveTps: weightedMs > 0 ? Number(((weightedOut / weightedMs) * 1000).toFixed(1)) : null,
+          isRunning: Boolean(data.isRunning),
+        };
+      } else if (selectionMode === 'single' && runs.some(r => r.runIndex === selectedRunIndex)) {
+        run = runs.find(r => r.runIndex === selectedRunIndex);
+      } else {
+        selectionMode = 'latest';
+        selectedRunIndex = latestRun.runIndex;
+        run = latestRun;
       }
-      const run = runs.find(r => r.runIndex === selectedRunIndex) || runs[runs.length - 1];
 
       const total = Math.max(1, run.totalTokens);
       const pIn = ((run.inputTokens / total) * 100).toFixed(2);
       const pOut = ((run.outputTokens / total) * 100).toFixed(2);
       const pCache = ((run.cacheReadTokens / total) * 100).toFixed(2);
 
-      const optionsHtml = runs
+      const headOptions = [
+        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Run (Auto) · #${latestRun.runIndex}</option>`,
+        `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All Runs (Session · ${runs.length} runs)</option>`,
+      ].join('');
+      const optionsHtml = headOptions + runs
         .slice()
         .reverse()
         .map(r => {
           const label = `#${r.runIndex} · ${r.promptPreview || 'Run'} (${r.stepCount} steps)`;
-          const sel = r.runIndex === run.runIndex ? 'selected' : '';
+          const sel = selectionMode === 'single' && r.runIndex === run.runIndex ? 'selected' : '';
           return `<option value="${r.runIndex}" ${sel}>${escapeHtml(label)}</option>`;
         })
         .join('');
@@ -636,7 +676,13 @@
       const selEl = document.getElementById('run-select');
       if (selEl) {
         selEl.addEventListener('change', (e) => {
-          selectedRunIndex = Number(e.target.value);
+          const val = e.target.value;
+          if (val === 'latest' || val === 'all') {
+            selectionMode = val;
+          } else {
+            selectionMode = 'single';
+            selectedRunIndex = Number(val);
+          }
           lastHash = '';
           poll();
         });
@@ -651,7 +697,8 @@
           : '/api/telemetry';
         const res = await fetch(url);
         const data = await res.json();
-        const hash = `${data.updatedAt}:${selectedRunIndex}:${data.runs?.length || 0}`;
+        const latest = data.runs?.[data.runs.length - 1];
+        const hash = `${data.updatedAt}:${selectionMode}:${selectedRunIndex}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.isRunning ? 1 : 0}`;
         if (hash !== lastHash) {
           lastHash = hash;
           render(data);
