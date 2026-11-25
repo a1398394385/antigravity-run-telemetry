@@ -15,6 +15,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 会话级增量缓存：key = logsDir -> { transcriptMtime, transcriptSize, timingMtime, timingSize, buckets }
 const dailySessionCache = new Map();
+// ListConversations 短期缓存：key = parentConvId -> { ts, items }
+const childRpcCache = new Map();
 
 function findAppDataDirs() {
   const dirs = [];
@@ -46,6 +48,184 @@ function resolveLogsDir(convId) {
     if (existsSync(logsDir)) return logsDir;
   }
   return null;
+}
+
+function resolveConvRootDir(convId) {
+  if (!convId || !ID_RE.test(convId)) return null;
+  for (const appData of findAppDataDirs()) {
+    const dir = join(appData, 'brain', convId);
+    if (existsSync(dir)) return dir;
+  }
+  return null;
+}
+
+function readSingleConversationTelemetry(convId) {
+  const logsDir = resolveLogsDir(convId);
+  if (!logsDir) return null;
+
+  const fullPath = join(logsDir, 'transcript_full.jsonl');
+  const compactPath = join(logsDir, 'transcript.jsonl');
+  const transcriptPath = existsSync(fullPath) ? fullPath : compactPath;
+  const timingPath = join(logsDir, 'run_telemetry.jsonl');
+
+  const transcriptRows = readJsonl(transcriptPath);
+  const timingEvents = readJsonl(timingPath);
+
+  let mtimeMs = 0;
+  try { mtimeMs = Math.max(mtimeMs, statSync(transcriptPath).mtimeMs); } catch {}
+  try { mtimeMs = Math.max(mtimeMs, statSync(timingPath).mtimeMs); } catch {}
+
+  const parsed = parseRuns(transcriptRows, timingEvents);
+  return { logsDir, transcriptRows, mtimeMs, parsed };
+}
+
+function extractSwarmMembers(convId) {
+  const convDir = resolveConvRootDir(convId);
+  if (!convDir) return [];
+  const membersPath = join(convDir, '.system_generated', 'swarm', 'members.json');
+  if (!existsSync(membersPath)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(membersPath, 'utf-8'));
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.members)
+        ? raw.members
+        : raw && typeof raw === 'object'
+          ? Object.entries(raw).map(([name, val]) => ({ name, ...(typeof val === 'object' ? val : {}) }))
+          : [];
+    const out = [];
+    for (const m of list) {
+      const cid = m?.conversationId || m?.conversation_id || m?.id;
+      if (cid && ID_RE.test(cid) && cid !== convId) {
+        const label = m.name || m.role || 'worker';
+        out.push({ conversationId: cid, kind: 'swarm', label: String(label) });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function extractSubagentsFromTranscript(convId, transcriptRows) {
+  const callRoleById = new Map();
+  const found = [];
+  const seen = new Set();
+
+  for (const row of transcriptRows) {
+    if (Array.isArray(row.tool_calls)) {
+      for (const tc of row.tool_calls) {
+        if (tc?.name === 'invoke_subagent' && tc?.id) {
+          const args = tc.args || {};
+          const label = args.Role || args.TypeName || 'subagent';
+          callRoleById.set(tc.id, String(label));
+        }
+      }
+    }
+    if (row.source === 'MODEL' && row.type === 'GENERIC' && typeof row.content === 'string') {
+      if (!row.content.includes('conversationId') && !row.content.includes('conversation_id')) continue;
+      const matches = row.content.matchAll(/["']?(?:conversationId|conversation_id)["']?\s*[:=]\s*["']?([0-9a-f]{8}-[0-9a-f-]{12,})["']?/gi);
+      for (const m of matches) {
+        const cid = m[1];
+        if (!cid || cid === convId || seen.has(cid)) continue;
+        seen.add(cid);
+        let label = 'subagent';
+        for (const [, roleLabel] of callRoleById) {
+          label = roleLabel;
+        }
+        found.push({ conversationId: cid, kind: 'subagent', label });
+      }
+    }
+  }
+  return found;
+}
+
+async function fetchChildConversationsViaRpc(convId) {
+  const cached = childRpcCache.get(convId);
+  if (cached && Date.now() - cached.ts < 5000) return cached.items;
+
+  const lsAddr = process.env.ANTIGRAVITY_LS_ADDRESS;
+  const csrf = process.env.ANTIGRAVITY_CSRF_TOKEN;
+  if (!lsAddr || !csrf) return [];
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 800);
+    const res = await fetch(`http://${lsAddr}/product.v1.ConversationService/ListConversations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Connect-Protocol-Version': '1',
+        'x-antigravity-csrf-token': csrf,
+      },
+      body: JSON.stringify({ parentConversationId: convId, pageSize: 100, includeArchived: true }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const json = await res.json();
+    const items = Array.isArray(json?.conversations)
+      ? json.conversations
+          .filter((c) => c?.id && ID_RE.test(c.id) && c.id !== convId)
+          .map((c) => ({
+            conversationId: c.id,
+            kind: 'child',
+            label: c.annotations?.title || c.state?.summary || 'subagent',
+          }))
+      : [];
+    childRpcCache.set(convId, { ts: Date.now(), items });
+    return items;
+  } catch {
+    return [];
+  }
+}
+
+function summarizeRunsList(runs) {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let timedSteps = 0;
+  let timedMs = 0;
+  let timedOutputTokens = 0;
+  let costUsd = 0;
+  let hasPricedStep = false;
+  let stepCount = 0;
+  let isRunning = false;
+
+  for (const r of runs) {
+    stepCount += r.stepCount || 0;
+    inputTokens += r.inputTokens || 0;
+    outputTokens += r.outputTokens || 0;
+    cacheReadTokens += r.cacheReadTokens || 0;
+    if (r.costUsd !== null && r.costUsd !== undefined) {
+      costUsd += r.costUsd;
+      hasPricedStep = true;
+    }
+    if (r.isRunning) isRunning = true;
+    for (const s of (r.steps || [])) {
+      if (s.latencyMs !== null && s.latencyMs > 0) {
+        timedSteps += 1;
+        timedMs += s.latencyMs;
+        timedOutputTokens += s.outputTokens || 0;
+      }
+    }
+  }
+
+  const totalTokens = inputTokens + outputTokens + cacheReadTokens;
+  const cacheDenom = inputTokens + cacheReadTokens;
+  return {
+    stepCount,
+    timedSteps,
+    avgLatencyMs: timedSteps > 0 ? Math.round(timedMs / timedSteps) : null,
+    effectiveTps: timedMs > 0 ? Number(((timedOutputTokens / timedMs) * 1000).toFixed(1)) : null,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    totalTokens,
+    cacheHitRate: cacheDenom > 0 ? Number(((cacheReadTokens / cacheDenom) * 100).toFixed(1)) : 0,
+    costUsd: hasPricedStep ? costUsd : null,
+    isRunning,
+  };
 }
 
 function listAllConversationLogsDirs() {
@@ -246,35 +426,57 @@ app.page('/', () => new Response(readFileSync(join(__dirname, 'index.html'), 'ut
   headers: { 'Cache-Control': 'no-store' },
 }));
 
-app.api('/api/telemetry', (data) => {
+app.api('/api/telemetry', async (data) => {
   const convId = data.conversationId || app.config.conversationId || '';
   if (!convId || !ID_RE.test(convId)) {
-    return { conversationId: convId || null, found: false, runs: [] };
+    return { conversationId: convId || null, found: false, runs: [], children: [] };
   }
 
-  const logsDir = resolveLogsDir(convId);
-  if (!logsDir) {
-    return { conversationId: convId, found: false, runs: [] };
+  const mainData = readSingleConversationTelemetry(convId);
+  if (!mainData) {
+    return { conversationId: convId, found: false, runs: [], children: [] };
   }
 
-  const fullPath = join(logsDir, 'transcript_full.jsonl');
-  const compactPath = join(logsDir, 'transcript.jsonl');
-  const transcriptPath = existsSync(fullPath) ? fullPath : compactPath;
-  const timingPath = join(logsDir, 'run_telemetry.jsonl');
+  // 发现关联的 Swarm / Subagent 子会话（本地文件 + RPC 兜底）
+  const childMap = new Map();
+  for (const item of extractSwarmMembers(convId)) {
+    childMap.set(item.conversationId, item);
+  }
+  for (const item of extractSubagentsFromTranscript(convId, mainData.transcriptRows)) {
+    if (!childMap.has(item.conversationId)) childMap.set(item.conversationId, item);
+  }
+  for (const item of await fetchChildConversationsViaRpc(convId)) {
+    if (!childMap.has(item.conversationId)) childMap.set(item.conversationId, item);
+  }
 
-  const transcriptRows = readJsonl(transcriptPath);
-  const timingEvents = readJsonl(timingPath);
+  let maxMtime = mainData.mtimeMs;
+  const children = [];
+  for (const meta of childMap.values()) {
+    const childData = readSingleConversationTelemetry(meta.conversationId);
+    if (!childData || childData.parsed.runs.length === 0) continue;
+    maxMtime = Math.max(maxMtime, childData.mtimeMs);
+    children.push({
+      conversationId: meta.conversationId,
+      kind: meta.kind,
+      label: meta.label,
+      runs: childData.parsed.runs,
+      summary: summarizeRunsList(childData.parsed.runs),
+    });
+  }
 
-  let mtimeMs = 0;
-  try { mtimeMs = Math.max(mtimeMs, statSync(transcriptPath).mtimeMs); } catch {}
-  try { mtimeMs = Math.max(mtimeMs, statSync(timingPath).mtimeMs); } catch {}
+  const allRuns = [
+    ...mainData.parsed.runs,
+    ...children.flatMap((c) => c.runs),
+  ];
 
-  const parsed = parseRuns(transcriptRows, timingEvents);
   return {
     conversationId: convId,
     found: true,
-    updatedAt: mtimeMs || Date.now(),
-    ...parsed,
+    updatedAt: maxMtime || Date.now(),
+    ...mainData.parsed,
+    mainSummary: summarizeRunsList(mainData.parsed.runs),
+    combinedSummary: summarizeRunsList(allRuns),
+    children,
   };
 }, 'GET');
 

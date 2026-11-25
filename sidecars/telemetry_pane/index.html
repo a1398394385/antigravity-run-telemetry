@@ -448,6 +448,24 @@
       background: rgba(96, 165, 250, 0.14);
       border-color: rgba(96, 165, 250, 0.3);
     }
+    .agent-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: var(--rt-mono);
+      flex-shrink: 0;
+      color: #0f766e;
+      background: rgba(20, 184, 166, 0.1);
+      border: 1px solid rgba(20, 184, 166, 0.25);
+    }
+    :root[data-theme="dark"] .agent-pill {
+      color: #5eead4;
+      background: rgba(45, 212, 191, 0.14);
+      border-color: rgba(45, 212, 191, 0.3);
+    }
     .step-bottom {
       display: flex;
       align-items: center;
@@ -668,6 +686,79 @@
       `;
     }
 
+    function renderRunBlockHtml(r, badgeText) {
+      const stepsHtml = (r.steps || []).slice().reverse().map(s => {
+        const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
+        const tps = s.tps !== null ? `${s.tps} t/s` : '—';
+        const tok = [
+          tokChip('in', 'Input', s.inputTokens),
+          tokChip('out', 'Output', s.outputTokens),
+          tokChip('cache', 'Cache Read', s.cacheReadTokens),
+        ].join('');
+        const cacheDenom = s.inputTokens + s.cacheReadTokens;
+        const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
+        const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
+        const isPartialMiss = !isFullMiss && hitPct < 50 && s.inputTokens > 0;
+        const pillHtml = isFullMiss
+          ? `<span class="cache-pill miss">Cache Miss</span>`
+          : isPartialMiss
+            ? `<span class="cache-pill warn">Cache Miss · ${hitPct}%</span>`
+            : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
+        return `
+          <div class="step-row">
+            <div class="step-top">
+              <div class="step-title">
+                <span class="step-idx">#${s.stepIndex ?? '?'}</span>
+                <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.displayName || s.baseModel || s.model)}</span>
+                ${thinkingPillHtml(s.thinkingLevel)}
+              </div>
+              ${pillHtml}
+            </div>
+            <div class="step-bottom">
+              <div class="step-perf-group">
+                <span class="step-lat">${lat}</span>
+                <span class="step-tps">${tps}</span>
+              </div>
+              <span class="step-tok">${tok}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const title = r.promptPreview || `Run #${r.runIndex}`;
+      const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
+      const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
+      const runTok = [
+        tokChip('in', 'Input', r.inputTokens),
+        tokChip('out', 'Output', r.outputTokens),
+        tokChip('cache', 'Cache Read', r.cacheReadTokens),
+        tokChip('total', 'Total', r.totalTokens),
+      ].join('');
+      const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
+
+      return `
+        <div class="card steps-card">
+          <div class="run-block-head">
+            <div class="run-block-top">
+              <div class="step-title">
+                ${badgeHtml}
+                <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+              </div>
+              <span class="run-block-idx">#${r.runIndex} · ${r.stepCount} steps</span>
+            </div>
+            <div class="run-block-summary">
+              <div class="run-block-perf">
+                <span class="step-lat">Avg ${avgLat}</span>
+                <span class="step-tps">${avgTps}</span>
+              </div>
+              <span class="run-block-tok">${runTok}</span>
+            </div>
+          </div>
+          <div class="step-list">${stepsHtml}</div>
+        </div>
+      `;
+    }
+
     function render(data) {
       if (!data || !data.found || !data.runs || data.runs.length === 0) {
         $app.innerHTML = `${renderNavBarHtml()}<div class="empty">当前对话暂无模型调用记录。</div>`;
@@ -676,39 +767,22 @@
       }
 
       const runs = data.runs;
+      const children = data.children || [];
+      const hasChildren = children.length > 0;
       const latestRun = runs[runs.length - 1];
       let run;
       if (selectionMode === 'all') {
-        let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, timedSteps = 0, weightedMs = 0, weightedOut = 0, costUsd = 0, hasCost = false;
-        for (const r of runs) {
-          inputTokens += r.inputTokens;
-          outputTokens += r.outputTokens;
-          cacheReadTokens += r.cacheReadTokens;
-          if (r.costUsd !== null && r.costUsd !== undefined) { costUsd += r.costUsd; hasCost = true; }
-          for (const s of r.steps) {
-            if (s.latencyMs !== null && s.latencyMs > 0) {
-              timedSteps += 1;
-              weightedMs += s.latencyMs;
-              weightedOut += s.outputTokens;
-            }
-          }
+        run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
+      } else if (selectionMode === 'main') {
+        run = data.mainSummary || latestRun;
+      } else if (selectionMode === 'child') {
+        const ch = children.find(c => c.conversationId === selectedRunIndex);
+        if (ch) {
+          run = ch.summary;
+        } else {
+          selectionMode = 'all';
+          run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
         }
-        const totalTokens = inputTokens + outputTokens + cacheReadTokens;
-        const cacheDenom = inputTokens + cacheReadTokens;
-        run = {
-          runIndex: 0,
-          stepCount: runs.reduce((a, r) => a + r.stepCount, 0),
-          timedSteps,
-          inputTokens,
-          outputTokens,
-          cacheReadTokens,
-          totalTokens,
-          costUsd: hasCost ? costUsd : null,
-          cacheHitRate: cacheDenom > 0 ? Number(((cacheReadTokens / cacheDenom) * 100).toFixed(1)) : 0,
-          avgLatencyMs: timedSteps > 0 ? Math.round(weightedMs / timedSteps) : null,
-          effectiveTps: weightedMs > 0 ? Number(((weightedOut / weightedMs) * 1000).toFixed(1)) : null,
-          isRunning: Boolean(data.isRunning),
-        };
       } else if (selectionMode === 'single' && runs.some(r => r.runIndex === selectedRunIndex)) {
         run = runs.find(r => r.runIndex === selectedRunIndex);
       } else {
@@ -717,16 +791,16 @@
         run = latestRun;
       }
 
-      const total = Math.max(1, run.totalTokens);
-      const pIn = ((run.inputTokens / total) * 100).toFixed(2);
-      const pOut = ((run.outputTokens / total) * 100).toFixed(2);
-      const pCache = ((run.cacheReadTokens / total) * 100).toFixed(2);
-
       const headOptions = [
-        `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All Runs (Session · ${runs.length} runs)</option>`,
-        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Run (Auto) · #${latestRun.runIndex}</option>`,
+        hasChildren
+          ? `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All (Main + ${children.length} Subagents/Swarm)</option>`
+          : `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All Runs (Session · ${runs.length} runs)</option>`,
+        hasChildren
+          ? `<option value="main" ${selectionMode === 'main' ? 'selected' : ''}>Main Session Only (${runs.length} runs)</option>`
+          : '',
+        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Main Run (Auto) · #${latestRun.runIndex}</option>`,
       ].join('');
-      const optionsHtml = headOptions + runs
+      const mainOptions = runs
         .slice()
         .reverse()
         .map(r => {
@@ -735,77 +809,40 @@
           return `<option value="${r.runIndex}" ${sel}>${escapeHtml(label)}</option>`;
         })
         .join('');
+      const childOptions = children
+        .map(c => {
+          const prefix = c.kind === 'swarm' ? 'Swarm' : 'Subagent';
+          const label = `${prefix} · ${c.label} (${c.summary.stepCount} steps)`;
+          const val = `child:${c.conversationId}`;
+          const sel = selectionMode === 'child' && selectedRunIndex === c.conversationId ? 'selected' : '';
+          return `<option value="${escapeHtml(val)}" ${sel}>${escapeHtml(label)}</option>`;
+        })
+        .join('');
+      const optionsHtml = headOptions + mainOptions + childOptions;
 
-      const runBlocksHtml = runs
+      const mainBlocksHtml = runs
         .slice()
         .reverse()
-        .map(r => {
-          const stepsHtml = r.steps.slice().reverse().map(s => {
-            const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
-            const tps = s.tps !== null ? `${s.tps} t/s` : '—';
-            const tok = [
-              tokChip('in', 'Input', s.inputTokens),
-              tokChip('out', 'Output', s.outputTokens),
-              tokChip('cache', 'Cache Read', s.cacheReadTokens),
-            ].join('');
-            const cacheDenom = s.inputTokens + s.cacheReadTokens;
-            const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
-            const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
-            const isPartialMiss = !isFullMiss && hitPct < 50 && s.inputTokens > 0;
-            const pillHtml = isFullMiss
-              ? `<span class="cache-pill miss">Cache Miss</span>`
-              : isPartialMiss
-                ? `<span class="cache-pill warn">Cache Miss · ${hitPct}%</span>`
-                : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
-            return `
-              <div class="step-row">
-                <div class="step-top">
-                  <div class="step-title">
-                    <span class="step-idx">#${s.stepIndex ?? '?'}</span>
-                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.displayName || s.baseModel || s.model)}</span>
-                    ${thinkingPillHtml(s.thinkingLevel)}
-                  </div>
-                  ${pillHtml}
-                </div>
-                <div class="step-bottom">
-                  <div class="step-perf-group">
-                    <span class="step-lat">${lat}</span>
-                    <span class="step-tps">${tps}</span>
-                  </div>
-                  <span class="step-tok">${tok}</span>
-                </div>
-              </div>
-            `;
-          }).join('');
+        .map(r => renderRunBlockHtml(r, ''))
+        .join('');
 
-          const title = r.promptPreview || `Run #${r.runIndex}`;
-          const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
-          const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
-          const runTok = [
-            tokChip('in', 'Input', r.inputTokens),
-            tokChip('out', 'Output', r.outputTokens),
-            tokChip('cache', 'Cache Read', r.cacheReadTokens),
-            tokChip('total', 'Total', r.totalTokens),
-          ].join('');
-
-          return `
-            <div class="card steps-card">
-              <div class="run-block-head">
-                <div class="run-block-top">
-                  <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-                  <span class="run-block-idx">#${r.runIndex} · ${r.stepCount} steps</span>
-                </div>
-                <div class="run-block-summary">
-                  <div class="run-block-perf">
-                    <span class="step-lat">Avg ${avgLat}</span>
-                    <span class="step-tps">${avgTps}</span>
-                  </div>
-                  <span class="run-block-tok">${runTok}</span>
-                </div>
-              </div>
-              <div class="step-list">${stepsHtml}</div>
-            </div>
-          `;
+      const childBlocksHtml = children
+        .map(c => {
+          const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
+          const allChildSteps = c.runs.flatMap(r => r.steps);
+          const mergedChildRun = {
+            runIndex: c.runs.length,
+            promptPreview: c.runs[0]?.promptPreview || c.label,
+            stepCount: c.summary.stepCount,
+            avgLatencyMs: c.summary.avgLatencyMs,
+            effectiveTps: c.summary.effectiveTps,
+            inputTokens: c.summary.inputTokens,
+            outputTokens: c.summary.outputTokens,
+            cacheReadTokens: c.summary.cacheReadTokens,
+            totalTokens: c.summary.totalTokens,
+            steps: allChildSteps,
+          };
+          return renderRunBlockHtml(mergedChildRun, tag);
         })
         .join('');
 
@@ -828,7 +865,8 @@
 
         ${timingNotice}
 
-        ${runBlocksHtml}
+        ${mainBlocksHtml}
+        ${childBlocksHtml}
       `;
 
       bindNavBar();
@@ -836,8 +874,11 @@
       if (selEl) {
         selEl.addEventListener('change', (e) => {
           const val = e.target.value;
-          if (val === 'latest' || val === 'all') {
+          if (val === 'latest' || val === 'all' || val === 'main') {
             selectionMode = val;
+          } else if (val.startsWith('child:')) {
+            selectionMode = 'child';
+            selectedRunIndex = val.slice(6);
           } else {
             selectionMode = 'single';
             selectedRunIndex = Number(val);
@@ -958,7 +999,7 @@
         const data = await res.json();
         if (activeTab !== 'session') return;
         const latest = data.runs?.[data.runs.length - 1];
-        const hash = `${data.updatedAt}:${selectionMode}:${selectedRunIndex}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.isRunning ? 1 : 0}`;
+        const hash = `${data.updatedAt}:${selectionMode}:${selectedRunIndex}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.children?.length || 0}:${data.combinedSummary?.totalTokens || 0}:${data.isRunning ? 1 : 0}`;
         if (hash !== lastHash) {
           lastHash = hash;
           render(data);
