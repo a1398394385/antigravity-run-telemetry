@@ -325,6 +325,11 @@
       background: rgba(220, 38, 38, 0.1);
       border-color: rgba(220, 38, 38, 0.25);
     }
+    .cache-pill.warn {
+      color: #d97706;
+      background: rgba(217, 119, 6, 0.1);
+      border-color: rgba(217, 119, 6, 0.28);
+    }
     .cache-pill.hit {
       color: var(--rt-live);
       background: rgba(22, 163, 74, 0.1);
@@ -334,6 +339,11 @@
       color: #fca5a5;
       background: rgba(239, 68, 68, 0.16);
       border-color: rgba(239, 68, 68, 0.35);
+    }
+    :root[data-theme="dark"] .cache-pill.warn {
+      color: #fcd34d;
+      background: rgba(245, 158, 11, 0.16);
+      border-color: rgba(245, 158, 11, 0.35);
     }
     :root[data-theme="dark"] .cache-pill.hit {
       color: #86efac;
@@ -494,11 +504,14 @@
               tokChip('cache', 'Cache Read', s.cacheReadTokens),
             ].join('');
             const cacheDenom = s.inputTokens + s.cacheReadTokens;
-            const isMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
             const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
-            const pillHtml = isMiss
+            const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
+            const isPartialMiss = !isFullMiss && hitPct < 50 && s.inputTokens > 0;
+            const pillHtml = isFullMiss
               ? `<span class="cache-pill miss">Cache Miss</span>`
-              : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
+              : isPartialMiss
+                ? `<span class="cache-pill warn">Cache Miss · ${hitPct}%</span>`
+                : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
             return `
               <div class="step-row">
                 <div class="step-top">
