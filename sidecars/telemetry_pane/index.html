@@ -68,6 +68,71 @@
       margin: 0 auto;
     }
 
+    .nav-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      background: var(--rt-surface);
+      border: 1px solid var(--rt-border);
+      border-radius: 9px;
+    }
+    .nav-tab {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--rt-muted);
+      font-family: var(--rt-sans);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.12s ease, color 0.12s ease;
+    }
+    .nav-tab:hover {
+      color: var(--rt-text);
+    }
+    .nav-tab.active {
+      background: var(--rt-surface-hover);
+      color: var(--rt-text);
+    }
+
+    .date-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .date-input {
+      flex: 1;
+      min-width: 0;
+      background: var(--rt-surface);
+      color: var(--rt-text);
+      border: 1px solid var(--rt-border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-family: var(--rt-mono);
+      outline: none;
+      color-scheme: light dark;
+    }
+    .date-btn {
+      appearance: none;
+      background: var(--rt-surface);
+      color: var(--rt-text);
+      border: 1px solid var(--rt-border);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-family: var(--rt-sans);
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .date-btn:hover {
+      background: var(--rt-surface-hover);
+    }
+
     .topbar {
       display: flex;
       align-items: center;
@@ -394,9 +459,23 @@
 
   <script>
     const $app = document.getElementById('app');
+    let activeTab = 'session'; // 'session' | 'daily'
     let selectionMode = 'all'; // 'all' | 'latest' | 'single'
     let selectedRunIndex = null;
     let lastHash = '';
+    let selectedDate = todayDateStr();
+    let lastDailyHash = '';
+
+    function todayDateStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function shiftDateStr(dateStr, deltaDays) {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dt = new Date(y, m - 1, d + deltaDays);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    }
 
     function syncTheme() {
       const root = document.documentElement;
@@ -470,9 +549,90 @@
       return `<span class="tok-chip ${kind}" title="${label}">${TOK_ICONS[kind]}<span>${fmtNum(value)}</span></span>`;
     }
 
+    function renderNavBarHtml() {
+      return `
+        <div class="nav-tabs" role="tablist">
+          <button type="button" class="nav-tab ${activeTab === 'session' ? 'active' : ''}" data-tab="session">Session</button>
+          <button type="button" class="nav-tab ${activeTab === 'daily' ? 'active' : ''}" data-tab="daily">Daily</button>
+        </div>
+      `;
+    }
+
+    function bindNavBar() {
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const next = btn.getAttribute('data-tab');
+          if (!next || next === activeTab) return;
+          activeTab = next;
+          if (activeTab === 'session') {
+            lastHash = '';
+            pollSession();
+          } else {
+            lastDailyHash = '';
+            pollDaily();
+          }
+        });
+      });
+    }
+
+    function renderKpiAndTokenHtml(m) {
+      const total = Math.max(1, m.totalTokens || 0);
+      const pIn = (((m.inputTokens || 0) / total) * 100).toFixed(2);
+      const pOut = (((m.outputTokens || 0) / total) * 100).toFixed(2);
+      const pCache = (((m.cacheReadTokens || 0) / total) * 100).toFixed(2);
+      return `
+        <div class="grid-2">
+          <div class="card">
+            <div class="kpi-label">Avg Step Latency (≈TTFT+Gen)</div>
+            <div class="kpi-value">${fmtMs(m.avgLatencyMs)}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Effective Speed</div>
+            <div class="kpi-value">${m.effectiveTps !== null && m.effectiveTps !== undefined ? `${m.effectiveTps}<span class="kpi-unit">tok/s</span>` : '—'}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Est. Cost</div>
+            <div class="kpi-value">${fmtCost(m.costUsd)}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Cache Hit Rate</div>
+            <div class="kpi-value">${m.cacheHitRate ?? 0}<span class="kpi-unit">%</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Token Usage (4 Items)</div>
+          <div class="bar">
+            <div class="bar-seg bar-in" style="width:${pIn}%"></div>
+            <div class="bar-seg bar-out" style="width:${pOut}%"></div>
+            <div class="bar-seg bar-cache" style="width:${pCache}%"></div>
+          </div>
+          <div class="token-grid">
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-in)"></span>Input</span>
+              <span class="token-num">${fmtNum(m.inputTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-out)"></span>Output</span>
+              <span class="token-num">${fmtNum(m.outputTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-cache)"></span>Cache Read</span>
+              <span class="token-num">${fmtNum(m.cacheReadTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name">Total</span>
+              <span class="token-num">${fmtNum(m.totalTokens)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function render(data) {
       if (!data || !data.found || !data.runs || data.runs.length === 0) {
-        $app.innerHTML = '<div class="empty">当前对话暂无模型调用记录。</div>';
+        $app.innerHTML = `${renderNavBarHtml()}<div class="empty">当前对话暂无模型调用记录。</div>`;
+        bindNavBar();
         return;
       }
 
@@ -614,6 +774,8 @@
         : '';
 
       $app.innerHTML = `
+        ${renderNavBarHtml()}
+
         <div class="topbar">
           <select id="run-select" class="run-select">${optionsHtml}</select>
           <span class="badge ${run.isRunning ? 'live' : ''}">
@@ -622,57 +784,14 @@
           </span>
         </div>
 
-        <div class="grid-2">
-          <div class="card">
-            <div class="kpi-label">Avg Step Latency (≈TTFT+Gen)</div>
-            <div class="kpi-value">${fmtMs(run.avgLatencyMs)}</div>
-          </div>
-          <div class="card">
-            <div class="kpi-label">Effective Speed</div>
-            <div class="kpi-value">${run.effectiveTps !== null ? `${run.effectiveTps}<span class="kpi-unit">tok/s</span>` : '—'}</div>
-          </div>
-          <div class="card">
-            <div class="kpi-label">Est. Cost</div>
-            <div class="kpi-value">${fmtCost(run.costUsd)}</div>
-          </div>
-          <div class="card">
-            <div class="kpi-label">Cache Hit Rate</div>
-            <div class="kpi-value">${run.cacheHitRate}<span class="kpi-unit">%</span></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-title">Token Usage (4 Items)</div>
-          <div class="bar">
-            <div class="bar-seg bar-in" style="width:${pIn}%"></div>
-            <div class="bar-seg bar-out" style="width:${pOut}%"></div>
-            <div class="bar-seg bar-cache" style="width:${pCache}%"></div>
-          </div>
-          <div class="token-grid">
-            <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-in)"></span>Input</span>
-              <span class="token-num">${fmtNum(run.inputTokens)}</span>
-            </div>
-            <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-out)"></span>Output</span>
-              <span class="token-num">${fmtNum(run.outputTokens)}</span>
-            </div>
-            <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-cache)"></span>Cache Read</span>
-              <span class="token-num">${fmtNum(run.cacheReadTokens)}</span>
-            </div>
-            <div class="token-item">
-              <span class="token-name">Total</span>
-              <span class="token-num">${fmtNum(run.totalTokens)}</span>
-            </div>
-          </div>
-        </div>
+        ${renderKpiAndTokenHtml(run)}
 
         ${timingNotice}
 
         ${runBlocksHtml}
       `;
 
+      bindNavBar();
       const selEl = document.getElementById('run-select');
       if (selEl) {
         selEl.addEventListener('change', (e) => {
@@ -684,12 +803,112 @@
             selectedRunIndex = Number(val);
           }
           lastHash = '';
-          poll();
+          pollSession();
         });
       }
     }
 
-    async function poll() {
+    function renderDaily(data) {
+      const s = data?.summary || { stepCount: 0, sessionCount: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheHitRate: 0, avgLatencyMs: null, effectiveTps: null, costUsd: null };
+      const models = data?.models || [];
+
+      const modelsHtml = models.length === 0
+        ? `<div class="empty">${escapeHtml(selectedDate)} 暂无模型调用记录。</div>`
+        : `
+          <div class="card steps-card">
+            <div class="run-block-head">
+              <div class="run-block-top">
+                <div class="run-block-title">Models (${models.length})</div>
+                <span class="run-block-idx">${s.sessionCount} sessions · ${s.stepCount} steps</span>
+              </div>
+            </div>
+            <div class="step-list">
+              ${models.map(m => {
+                const lat = m.avgLatencyMs !== null ? fmtMsPlain(m.avgLatencyMs) : '—';
+                const tps = m.effectiveTps !== null ? `${m.effectiveTps} t/s` : '—';
+                const cost = m.costUsd !== null ? (m.costUsd < 0.01 ? `$${m.costUsd.toFixed(4)}` : `$${m.costUsd.toFixed(3)}`) : '—';
+                const isMiss = m.cacheReadTokens === 0 && m.inputTokens > 0;
+                const isWarn = !isMiss && m.cacheHitRate < 50 && m.inputTokens > 0;
+                const pillHtml = isMiss
+                  ? `<span class="cache-pill miss">Cache Miss</span>`
+                  : isWarn
+                    ? `<span class="cache-pill warn">Cache Miss · ${Math.round(m.cacheHitRate)}%</span>`
+                    : `<span class="cache-pill hit">Hit ${Math.round(m.cacheHitRate)}%</span>`;
+                const tok = [
+                  tokChip('in', 'Input', m.inputTokens),
+                  tokChip('out', 'Output', m.outputTokens),
+                  tokChip('cache', 'Cache Read', m.cacheReadTokens),
+                  tokChip('total', 'Total', m.totalTokens),
+                ].join('');
+                return `
+                  <div class="step-row">
+                    <div class="step-top">
+                      <div class="step-title">
+                        <span class="step-model" title="${escapeHtml(m.model)}">${escapeHtml(m.model)}</span>
+                        <span class="step-idx">${m.stepCount} steps · ${m.sessionCount} sess</span>
+                      </div>
+                      ${pillHtml}
+                    </div>
+                    <div class="step-bottom">
+                      <div class="step-perf-group">
+                        <span class="step-lat">${lat}</span>
+                        <span class="step-tps">${tps}</span>
+                        <span class="step-lat">${cost}</span>
+                      </div>
+                      <span class="step-tok">${tok}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+
+      $app.innerHTML = `
+        ${renderNavBarHtml()}
+
+        <div class="date-bar">
+          <button type="button" id="date-prev" class="date-btn" title="前一天">‹</button>
+          <input type="date" id="date-picker" class="date-input" value="${escapeHtml(selectedDate)}">
+          <button type="button" id="date-next" class="date-btn" title="后一天">›</button>
+          <button type="button" id="date-today" class="date-btn">Today</button>
+        </div>
+
+        ${renderKpiAndTokenHtml(s)}
+
+        ${modelsHtml}
+      `;
+
+      bindNavBar();
+      const picker = document.getElementById('date-picker');
+      if (picker) {
+        picker.addEventListener('change', (e) => {
+          if (e.target.value) {
+            selectedDate = e.target.value;
+            lastDailyHash = '';
+            pollDaily();
+          }
+        });
+      }
+      document.getElementById('date-prev')?.addEventListener('click', () => {
+        selectedDate = shiftDateStr(selectedDate, -1);
+        lastDailyHash = '';
+        pollDaily();
+      });
+      document.getElementById('date-next')?.addEventListener('click', () => {
+        selectedDate = shiftDateStr(selectedDate, 1);
+        lastDailyHash = '';
+        pollDaily();
+      });
+      document.getElementById('date-today')?.addEventListener('click', () => {
+        selectedDate = todayDateStr();
+        lastDailyHash = '';
+        pollDaily();
+      });
+    }
+
+    async function pollSession() {
+      if (activeTab !== 'session') return;
       try {
         const convId = getConversationId();
         const url = convId
@@ -697,6 +916,7 @@
           : '/api/telemetry';
         const res = await fetch(url);
         const data = await res.json();
+        if (activeTab !== 'session') return;
         const latest = data.runs?.[data.runs.length - 1];
         const hash = `${data.updatedAt}:${selectionMode}:${selectedRunIndex}:${data.runs?.length || 0}:${latest?.stepCount || 0}:${latest?.outputTokens || 0}:${data.isRunning ? 1 : 0}`;
         if (hash !== lastHash) {
@@ -708,12 +928,32 @@
       }
     }
 
-    poll();
+    async function pollDaily() {
+      if (activeTab !== 'daily') return;
+      try {
+        const res = await fetch(`/api/daily?date=${encodeURIComponent(selectedDate)}`);
+        const data = await res.json();
+        if (activeTab !== 'daily') return;
+        const hash = `${data.date}:${data.summary?.stepCount || 0}:${data.summary?.totalTokens || 0}:${data.models?.length || 0}`;
+        if (hash !== lastDailyHash) {
+          lastDailyHash = hash;
+          renderDaily(data);
+        }
+      } catch {
+        // 忽略短暂轮询异常
+      }
+    }
+
+    pollSession();
     setInterval(() => {
-      if (!document.hidden) poll();
+      if (document.hidden) return;
+      if (activeTab === 'session') pollSession();
+      else if (selectedDate === todayDateStr()) pollDaily();
     }, 1500);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) poll();
+      if (document.hidden) return;
+      if (activeTab === 'session') pollSession();
+      else pollDaily();
     });
   </script>
 </body>

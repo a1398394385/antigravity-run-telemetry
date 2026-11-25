@@ -7,6 +7,7 @@ An Antigravity plugin that displays per-run LLM latency, effective token through
 ## Features
 
 - **Per-Run & Session KPI Summary**: Average step latency, effective output speed (`tok/s`), estimated USD cost (based on built-in Gemini pricing), and cache hit rate. Defaults to full-session accumulation (`All Runs`), with quick switching to `Latest Run (Auto)` or any individual run.
+- **Daily Cross-Session Summary (`Daily` Tab)**: Switch between `Session` and `Daily` at the top. Pick any date (`‹` / `›` / date picker / `Today`) to view total daily cost, latency, speed, 4-item token totals, and a per-model breakdown across all conversations.
 - **4-Item Token Breakdown**: Stacked proportion bar and exact counts (`K`-formatted with 1 decimal place above 1,000) for `Input`, `Output`, `Cache Read`, and `Total`.
 - **Full Session Run Cards**: Lists every Agent RUN in the current conversation (newest first), titled by the first line of the user prompt.
 - **Two-Line Step Details**: Each LLM invocation shows model name + rounded **`Cache Miss`** / **`Hit XX%`** pill on row 1, and latency, `t/s`, and `In / Out / Cache` tokens on row 2.
