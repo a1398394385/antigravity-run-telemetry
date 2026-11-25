@@ -415,6 +415,39 @@
       background: rgba(74, 222, 128, 0.12);
       border-color: rgba(74, 222, 128, 0.28);
     }
+    .think-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: var(--rt-mono);
+      flex-shrink: 0;
+      color: #6d28d9;
+      background: rgba(139, 92, 246, 0.1);
+      border: 1px solid rgba(139, 92, 246, 0.24);
+    }
+    .think-pill.medium {
+      color: #2563eb;
+      background: rgba(59, 130, 246, 0.1);
+      border-color: rgba(59, 130, 246, 0.24);
+    }
+    .think-pill.low, .think-pill.minimal, .think-pill.none, .think-pill.off {
+      color: var(--rt-muted);
+      background: var(--rt-surface-hover);
+      border-color: var(--rt-border);
+    }
+    :root[data-theme="dark"] .think-pill {
+      color: #c4b5fd;
+      background: rgba(167, 139, 250, 0.14);
+      border-color: rgba(167, 139, 250, 0.3);
+    }
+    :root[data-theme="dark"] .think-pill.medium {
+      color: #93c5fd;
+      background: rgba(96, 165, 250, 0.14);
+      border-color: rgba(96, 165, 250, 0.3);
+    }
     .step-bottom {
       display: flex;
       align-items: center;
@@ -548,6 +581,11 @@
 
     function tokChip(kind, label, value) {
       return `<span class="tok-chip ${kind}" title="${label}">${TOK_ICONS[kind]}<span>${fmtNum(value)}</span></span>`;
+    }
+
+    function thinkingPillHtml(level) {
+      if (!level) return '';
+      return `<span class="think-pill ${escapeHtml(level)}">${escapeHtml(level)}</span>`;
     }
 
     function renderNavBarHtml() {
@@ -724,7 +762,8 @@
                 <div class="step-top">
                   <div class="step-title">
                     <span class="step-idx">#${s.stepIndex ?? '?'}</span>
-                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.model)}</span>
+                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.baseModel || s.model)}</span>
+                    ${thinkingPillHtml(s.thinkingLevel)}
                   </div>
                   ${pillHtml}
                 </div>
@@ -846,6 +885,7 @@
                     <div class="step-top">
                       <div class="step-title">
                         <span class="step-model" title="${escapeHtml(m.model)}">${escapeHtml(m.model)}</span>
+                        ${(m.thinkingLevels || []).map(thinkingPillHtml).join('')}
                         <span class="step-idx">${m.stepCount} steps · ${m.sessionCount} sess</span>
                       </div>
                       ${pillHtml}

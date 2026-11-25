@@ -197,10 +197,12 @@ function computeDailySummary(targetDate) {
             hasPricedStep: false,
           },
           sessionIds: new Set(),
+          thinkingLevels: new Set(),
         });
       }
       const entry = modelMap.get(model);
       entry.sessionIds.add(convId);
+      for (const lv of (m.thinkingLevels || [])) entry.thinkingLevels.add(lv);
       entry.acc.stepCount += m.stepCount;
       entry.acc.timedSteps += m.timedSteps;
       entry.acc.timedMs += m.timedMs;
@@ -216,8 +218,9 @@ function computeDailySummary(targetDate) {
   }
 
   const models = Array.from(modelMap.entries())
-    .map(([model, { acc, sessionIds }]) => ({
+    .map(([model, { acc, sessionIds, thinkingLevels }]) => ({
       model,
+      thinkingLevels: Array.from(thinkingLevels),
       ...finalizeMetrics(acc, sessionIds.size),
     }))
     .sort((a, b) => {
