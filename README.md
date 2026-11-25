@@ -6,7 +6,7 @@ An Antigravity plugin that displays per-run LLM latency, effective token through
 
 ## Features
 
-- **Per-Run KPI Summary**: Average step latency, effective output speed (`tok/s`), output tokens, and cache hit rate for the selected Agent RUN.
+- **Per-Run & Session KPI Summary**: Average step latency, effective output speed (`tok/s`), estimated USD cost (based on built-in Gemini pricing), and cache hit rate. Defaults to full-session accumulation (`All Runs`), with quick switching to `Latest Run (Auto)` or any individual run.
 - **4-Item Token Breakdown**: Stacked proportion bar and exact counts (`K`-formatted with 1 decimal place above 1,000) for `Input`, `Output`, `Cache Read`, and `Total`.
 - **Full Session Run Cards**: Lists every Agent RUN in the current conversation (newest first), titled by the first line of the user prompt.
 - **Two-Line Step Details**: Each LLM invocation shows model name + rounded **`Cache Miss`** / **`Hit XX%`** pill on row 1, and latency, `t/s`, and `In / Out / Cache` tokens on row 2.
@@ -21,6 +21,17 @@ git clone https://github.com/a1398394385/antigravity-run-telemetry.git ~/.gemini
 ```
 
 No `npm install` or build step is required. Antigravity discovers it automatically—open the **Telemetry** tab from the `+` menu in the right auxiliary pane.
+
+## Updating
+
+Pull the latest changes in place:
+
+```bash
+git -C ~/.gemini/config/plugins/run-telemetry pull
+```
+
+- **Frontend-only changes (`index.html`)**: Close and reopen the **Telemetry** tab in the right pane.
+- **Backend or hook changes (`main.mjs`, `lib/telemetry.mjs`, `hooks.json`)**: Toggle **Run Telemetry** off and back on in Antigravity Customizations to restart the sidecar.
 
 ## How It Works
 

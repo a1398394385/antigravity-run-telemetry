@@ -394,7 +394,7 @@
 
   <script>
     const $app = document.getElementById('app');
-    let selectionMode = 'latest'; // 'latest' | 'all' | 'single'
+    let selectionMode = 'all'; // 'all' | 'latest' | 'single'
     let selectedRunIndex = null;
     let lastHash = '';
 
@@ -524,8 +524,8 @@
       const pCache = ((run.cacheReadTokens / total) * 100).toFixed(2);
 
       const headOptions = [
-        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Run (Auto) · #${latestRun.runIndex}</option>`,
         `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All Runs (Session · ${runs.length} runs)</option>`,
+        `<option value="latest" ${selectionMode === 'latest' ? 'selected' : ''}>Latest Run (Auto) · #${latestRun.runIndex}</option>`,
       ].join('');
       const optionsHtml = headOptions + runs
         .slice()
