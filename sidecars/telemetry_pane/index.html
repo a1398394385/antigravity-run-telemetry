@@ -445,6 +445,12 @@
       return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`;
     }
 
+    function fmtCost(usd) {
+      if (usd === null || usd === undefined) return '—';
+      if (usd < 0.01) return `<span class="kpi-unit" style="margin-left:0;margin-right:2px">$</span>${usd.toFixed(4)}`;
+      return `<span class="kpi-unit" style="margin-left:0;margin-right:2px">$</span>${usd.toFixed(3)}`;
+    }
+
     function escapeHtml(str) {
       return String(str || '')
         .replace(/&/g, '&amp;')
@@ -586,8 +592,8 @@
             <div class="kpi-value">${run.effectiveTps !== null ? `${run.effectiveTps}<span class="kpi-unit">tok/s</span>` : '—'}</div>
           </div>
           <div class="card">
-            <div class="kpi-label">Output Tokens</div>
-            <div class="kpi-value">${fmtNum(run.outputTokens)}</div>
+            <div class="kpi-label">Est. Cost</div>
+            <div class="kpi-value">${fmtCost(run.costUsd)}</div>
           </div>
           <div class="card">
             <div class="kpi-label">Cache Hit Rate</div>
