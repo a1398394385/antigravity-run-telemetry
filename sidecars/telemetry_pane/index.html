@@ -488,6 +488,14 @@
       font-weight: 600;
     }
 
+    .run-block-head.clickable {
+      cursor: pointer;
+    }
+    .run-block-head.collapsed {
+      border-bottom: 0;
+      margin-bottom: 0;
+      padding-bottom: 2px;
+    }
     .expand-btn {
       width: 100%;
       margin-top: 6px;
@@ -532,7 +540,7 @@
     let activeTab = 'session'; // 'session' | 'daily'
     let selectionMode = 'all'; // 'all' | 'main' | 'subagents'
     let lastSessionData = null;
-    const expandedCards = new Set();
+    const cardToggleState = new Map();
     let lastHash = '';
     let selectedDate = todayDateStr();
     let lastDailyHash = '';
@@ -706,12 +714,10 @@
       `;
     }
 
-    function renderRunBlockHtml(r, badgeText, cardKey) {
+    function renderRunBlockHtml(r, badgeText, cardKey, defaultExpanded) {
       const reversedSteps = (r.steps || []).slice().reverse();
-      const isExpanded = expandedCards.has(cardKey);
-      const hasMore = reversedSteps.length > 3;
-      const visibleSteps = (!hasMore || isExpanded) ? reversedSteps : reversedSteps.slice(0, 3);
-      const stepsHtml = visibleSteps.map(s => {
+      const isExpanded = cardToggleState.has(cardKey) ? cardToggleState.get(cardKey) : defaultExpanded;
+      const stepsHtml = isExpanded ? reversedSteps.map(s => {
         const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
         const tps = s.tps !== null ? `${s.tps} t/s` : '—';
         const tok = [
@@ -759,19 +765,17 @@
       ].join('');
       const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
 
-      const toggleBtnHtml = hasMore
-        ? `<button type="button" class="expand-btn" data-card-key="${escapeHtml(cardKey)}">${isExpanded ? '收起历史 steps' : `展开其余 ${reversedSteps.length - 3} 个 steps`}</button>`
-        : '';
+      const caret = isExpanded ? '▾' : '▸';
 
       return `
         <div class="card steps-card">
-          <div class="run-block-head">
+          <div class="run-block-head clickable ${isExpanded ? '' : 'collapsed'}" data-card-key="${escapeHtml(cardKey)}" data-default-expanded="${defaultExpanded ? '1' : '0'}">
             <div class="run-block-top">
               <div class="step-title">
                 ${badgeHtml}
                 <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
               </div>
-              <span class="run-block-idx">#${r.runIndex} · ${r.stepCount} steps</span>
+              <span class="run-block-idx">${r.stepCount} steps ${caret}</span>
             </div>
             <div class="run-block-summary">
               <div class="run-block-perf">
@@ -781,8 +785,7 @@
               <span class="run-block-tok">${runTok}</span>
             </div>
           </div>
-          <div class="step-list">${stepsHtml}</div>
-          ${toggleBtnHtml}
+          ${isExpanded ? `<div class="step-list">${stepsHtml}</div>` : ''}
         </div>
       `;
     }
@@ -815,7 +818,7 @@
         `<option value="subagents" ${selectionMode === 'subagents' ? 'selected' : ''}>Subagent Only (${children.length})</option>`,
       ].join('');
 
-      const renderChildCard = (c) => {
+      const renderChildCard = (c, defaultExpanded) => {
         const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
         const allChildSteps = c.runs.flatMap(r => r.steps);
         const mergedChildRun = {
@@ -830,18 +833,20 @@
           totalTokens: c.summary.totalTokens,
           steps: allChildSteps,
         };
-        return renderRunBlockHtml(mergedChildRun, tag, `child-${c.conversationId}`);
+        return renderRunBlockHtml(mergedChildRun, tag, `child-${c.conversationId}`, defaultExpanded);
       };
 
+      const reversedRuns = runs.slice().reverse();
       let listBlocksHtml = '';
       if (selectionMode === 'all') {
-        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '', `main-${r.runIndex}`)).join('') +
-          children.map(renderChildCard).join('');
+        const mainHtml = reversedRuns.map((r, i) => renderRunBlockHtml(r, '', `main-${r.runIndex}`, i < 3)).join('');
+        const childHtml = children.map((c, i) => renderChildCard(c, reversedRuns.length + i < 3)).join('');
+        listBlocksHtml = mainHtml + childHtml;
       } else if (selectionMode === 'main') {
-        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '', `main-${r.runIndex}`)).join('');
+        listBlocksHtml = reversedRuns.map((r, i) => renderRunBlockHtml(r, '', `main-${r.runIndex}`, i < 3)).join('');
       } else if (selectionMode === 'subagents') {
         listBlocksHtml = children.length > 0
-          ? children.map(renderChildCard).join('')
+          ? children.map((c, i) => renderChildCard(c, i < 3)).join('')
           : '<div class="empty">当前会话暂无 Subagent 或 Swarm 记录。</div>';
       }
 
@@ -868,12 +873,13 @@
       `;
 
       bindNavBar();
-      document.querySelectorAll('.expand-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const key = btn.getAttribute('data-card-key');
+      document.querySelectorAll('.run-block-head.clickable').forEach(head => {
+        head.addEventListener('click', () => {
+          const key = head.getAttribute('data-card-key');
+          const defExp = head.getAttribute('data-default-expanded') === '1';
           if (!key) return;
-          if (expandedCards.has(key)) expandedCards.delete(key);
-          else expandedCards.add(key);
+          const cur = cardToggleState.has(key) ? cardToggleState.get(key) : defExp;
+          cardToggleState.set(key, !cur);
           if (lastSessionData) render(lastSessionData);
         });
       });
