@@ -495,7 +495,7 @@
         .slice()
         .reverse()
         .map(r => {
-          const stepsHtml = r.steps.map(s => {
+          const stepsHtml = r.steps.slice().reverse().map(s => {
             const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
             const tps = s.tps !== null ? `${s.tps} t/s` : '—';
             const tok = [
