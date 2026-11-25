@@ -200,10 +200,18 @@
     }
     .run-block-head {
       display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 2px 6px 8px;
+      border-bottom: 1px solid var(--rt-border);
+      margin-bottom: 6px;
+    }
+    .run-block-top {
+      display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 2px 6px 8px;
+      min-width: 0;
     }
     .run-block-title {
       font-size: 12px;
@@ -214,12 +222,30 @@
       white-space: nowrap;
       min-width: 0;
     }
-    .run-block-meta {
+    .run-block-idx {
       font-family: var(--rt-mono);
       font-size: 11px;
       color: var(--rt-muted);
       white-space: nowrap;
       flex-shrink: 0;
+    }
+    .run-block-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-family: var(--rt-mono);
+      font-size: 11px;
+    }
+    .run-block-perf {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .run-block-tok {
+      color: var(--rt-muted);
+      white-space: nowrap;
     }
     .step-list {
       display: flex;
@@ -464,15 +490,24 @@
           }).join('');
 
           const title = r.promptPreview || `Run #${r.runIndex}`;
-          const metaParts = [`#${r.runIndex}`, `${r.stepCount} steps`];
-          if (r.avgLatencyMs !== null) metaParts.push(fmtMsPlain(r.avgLatencyMs));
-          if (r.effectiveTps !== null) metaParts.push(`${r.effectiveTps} t/s`);
+          const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
+          const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
+          const runTok = `In ${fmtNum(r.inputTokens)} · Out ${fmtNum(r.outputTokens)} · Cache ${fmtNum(r.cacheReadTokens)} · Total ${fmtNum(r.totalTokens)}`;
 
           return `
             <div class="card steps-card">
               <div class="run-block-head">
-                <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-                <div class="run-block-meta">${metaParts.join(' · ')}</div>
+                <div class="run-block-top">
+                  <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                  <span class="run-block-idx">#${r.runIndex} · ${r.stepCount} steps</span>
+                </div>
+                <div class="run-block-summary">
+                  <div class="run-block-perf">
+                    <span class="step-lat">Avg ${avgLat}</span>
+                    <span class="step-tps">${avgTps}</span>
+                  </div>
+                  <span class="run-block-tok">${runTok}</span>
+                </div>
               </div>
               <div class="step-list">${stepsHtml}</div>
             </div>
