@@ -819,31 +819,38 @@
         .join('');
       const optionsHtml = headOptions + mainOptions + childOptions;
 
-      const mainBlocksHtml = runs
-        .slice()
-        .reverse()
-        .map(r => renderRunBlockHtml(r, ''))
-        .join('');
+      const renderChildCard = (c) => {
+        const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
+        const allChildSteps = c.runs.flatMap(r => r.steps);
+        const mergedChildRun = {
+          runIndex: c.runs.length,
+          promptPreview: c.runs[0]?.promptPreview || c.label,
+          stepCount: c.summary.stepCount,
+          avgLatencyMs: c.summary.avgLatencyMs,
+          effectiveTps: c.summary.effectiveTps,
+          inputTokens: c.summary.inputTokens,
+          outputTokens: c.summary.outputTokens,
+          cacheReadTokens: c.summary.cacheReadTokens,
+          totalTokens: c.summary.totalTokens,
+          steps: allChildSteps,
+        };
+        return renderRunBlockHtml(mergedChildRun, tag);
+      };
 
-      const childBlocksHtml = children
-        .map(c => {
-          const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
-          const allChildSteps = c.runs.flatMap(r => r.steps);
-          const mergedChildRun = {
-            runIndex: c.runs.length,
-            promptPreview: c.runs[0]?.promptPreview || c.label,
-            stepCount: c.summary.stepCount,
-            avgLatencyMs: c.summary.avgLatencyMs,
-            effectiveTps: c.summary.effectiveTps,
-            inputTokens: c.summary.inputTokens,
-            outputTokens: c.summary.outputTokens,
-            cacheReadTokens: c.summary.cacheReadTokens,
-            totalTokens: c.summary.totalTokens,
-            steps: allChildSteps,
-          };
-          return renderRunBlockHtml(mergedChildRun, tag);
-        })
-        .join('');
+      let listBlocksHtml = '';
+      if (selectionMode === 'all') {
+        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '')).join('') +
+          children.map(renderChildCard).join('');
+      } else if (selectionMode === 'main') {
+        listBlocksHtml = runs.slice().reverse().map(r => renderRunBlockHtml(r, '')).join('');
+      } else if (selectionMode === 'latest') {
+        listBlocksHtml = renderRunBlockHtml(latestRun, '');
+      } else if (selectionMode === 'single') {
+        listBlocksHtml = renderRunBlockHtml(run, '');
+      } else if (selectionMode === 'child') {
+        const ch = children.find(c => c.conversationId === selectedRunIndex);
+        listBlocksHtml = ch ? renderChildCard(ch) : '';
+      }
 
       const timingNotice = run.timedSteps === 0
         ? `<div class="notice">此轮暂无 Hook 毫秒计时（可能发生在插件启用前，或正在首步等待中）。</div>`
@@ -864,8 +871,7 @@
 
         ${timingNotice}
 
-        ${mainBlocksHtml}
-        ${childBlocksHtml}
+        ${listBlocksHtml}
       `;
 
       bindNavBar();
