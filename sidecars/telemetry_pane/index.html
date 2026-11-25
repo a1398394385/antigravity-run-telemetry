@@ -752,7 +752,7 @@
             </div>
           </div>
         `;
-      }).join('');
+      }).join('') : '';
 
       const title = r.promptPreview || `Run #${r.runIndex}`;
       const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
