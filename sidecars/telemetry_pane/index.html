@@ -243,10 +243,29 @@
       align-items: center;
       gap: 8px;
     }
-    .run-block-tok {
+    .run-block-tok,
+    .step-tok {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
       color: var(--rt-muted);
       white-space: nowrap;
     }
+    .tok-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      color: var(--rt-text);
+    }
+    .tok-chip svg {
+      width: 12px;
+      height: 12px;
+      flex-shrink: 0;
+    }
+    .tok-chip.in svg { color: var(--rt-c-in); }
+    .tok-chip.out svg { color: var(--rt-c-out); }
+    .tok-chip.cache svg { color: var(--rt-c-cache); }
+    .tok-chip.total svg { color: var(--rt-muted); }
     .step-list {
       display: flex;
       flex-direction: column;
@@ -342,10 +361,6 @@
       color: var(--rt-c-out);
       font-weight: 600;
     }
-    .step-tok {
-      color: var(--rt-muted);
-      white-space: nowrap;
-    }
 
     .notice {
       font-size: 11px;
@@ -427,6 +442,17 @@
         .replace(/>/g, '&gt;');
     }
 
+    const TOK_ICONS = {
+      in: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9m0 0-3-3m3 3 3-3M3 13.5h10"/></svg>',
+      out: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 14V5m0 0-3 3m3-3 3 3M3 2.5h10"/></svg>',
+      cache: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 1.5 3.5 9h4.5l-1 5.5L12.5 7H8l1-5.5z"/></svg>',
+      total: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 3.5h-8L9 8l-4.5 4.5h8"/></svg>',
+    };
+
+    function tokChip(kind, label, value) {
+      return `<span class="tok-chip ${kind}" title="${label}">${TOK_ICONS[kind]}<span>${fmtNum(value)}</span></span>`;
+    }
+
     function render(data) {
       if (!data || !data.found || !data.runs || data.runs.length === 0) {
         $app.innerHTML = '<div class="empty">当前对话暂无模型调用记录。</div>';
@@ -462,7 +488,11 @@
           const stepsHtml = r.steps.map(s => {
             const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
             const tps = s.tps !== null ? `${s.tps} t/s` : '—';
-            const tok = `In ${fmtNum(s.inputTokens)} · Out ${fmtNum(s.outputTokens)} · Cache ${fmtNum(s.cacheReadTokens)}`;
+            const tok = [
+              tokChip('in', 'Input', s.inputTokens),
+              tokChip('out', 'Output', s.outputTokens),
+              tokChip('cache', 'Cache Read', s.cacheReadTokens),
+            ].join('');
             const cacheDenom = s.inputTokens + s.cacheReadTokens;
             const isMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
             const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
@@ -492,7 +522,12 @@
           const title = r.promptPreview || `Run #${r.runIndex}`;
           const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
           const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
-          const runTok = `In ${fmtNum(r.inputTokens)} · Out ${fmtNum(r.outputTokens)} · Cache ${fmtNum(r.cacheReadTokens)} · Total ${fmtNum(r.totalTokens)}`;
+          const runTok = [
+            tokChip('in', 'Input', r.inputTokens),
+            tokChip('out', 'Output', r.outputTokens),
+            tokChip('cache', 'Cache Read', r.cacheReadTokens),
+            tokChip('total', 'Total', r.totalTokens),
+          ].join('');
 
           return `
             <div class="card steps-card">
