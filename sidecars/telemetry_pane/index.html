@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Run Telemetry</title>
+  <script src="/preload.js"></script>
+  <style>
+    :root {
+      --rt-bg: var(--background, #ffffff);
+      --rt-surface: var(--card, #f7f8fa);
+      --rt-surface-hover: #eef0f4;
+      --rt-border: var(--border, #e3e6ec);
+      --rt-text: var(--foreground, #181a1f);
+      --rt-muted: var(--muted-foreground, #5c6678);
+      --rt-c-in: #3b82f6;
+      --rt-c-out: #10b981;
+      --rt-c-cache: #8b5cf6;
+      --rt-live: #16a34a;
+      --rt-radius: 10px;
+      --rt-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --rt-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --rt-bg: var(--background, #13151a);
+        --rt-surface: var(--card, #1c1f26);
+        --rt-surface-hover: #262a34;
+        --rt-border: var(--border, #2f3542);
+        --rt-text: var(--foreground, #f1f3f7);
+        --rt-muted: var(--muted-foreground, #a6b0c0);
+        --rt-c-in: #60a5fa;
+        --rt-c-out: #34d399;
+        --rt-c-cache: #a78bfa;
+        --rt-live: #4ade80;
+      }
+    }
+    :root[data-theme="dark"] {
+      --rt-bg: var(--background, #13151a);
+      --rt-surface: var(--card, #1c1f26);
+      --rt-surface-hover: #262a34;
+      --rt-border: var(--border, #2f3542);
+      --rt-text: var(--foreground, #f1f3f7);
+      --rt-muted: var(--muted-foreground, #a6b0c0);
+      --rt-c-in: #60a5fa;
+      --rt-c-out: #34d399;
+      --rt-c-cache: #a78bfa;
+      --rt-live: #4ade80;
+    }
+
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--rt-bg);
+      color: var(--rt-text);
+      font-family: var(--rt-sans);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .wrap {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .run-select {
+      flex: 1;
+      min-width: 0;
+      background: var(--rt-surface);
+      color: var(--rt-text);
+      border: 1px solid var(--rt-border);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-family: var(--rt-sans);
+      outline: none;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--rt-surface);
+      border: 1px solid var(--rt-border);
+      color: var(--rt-muted);
+      flex-shrink: 0;
+    }
+    .badge.live { color: var(--rt-live); }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .badge.live .dot {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .card {
+      background: var(--rt-surface);
+      border: 1px solid var(--rt-border);
+      border-radius: var(--rt-radius);
+      padding: 12px 14px;
+    }
+    .kpi-label {
+      font-size: 11px;
+      color: var(--rt-muted);
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .kpi-value {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--rt-mono);
+      letter-spacing: -0.02em;
+    }
+    .kpi-unit {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--rt-muted);
+      margin-left: 3px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--rt-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 10px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      display: flex;
+      background: var(--rt-border);
+      margin-bottom: 12px;
+    }
+    .bar-seg { height: 100%; transition: width 0.25s ease; }
+    .bar-in { background: var(--rt-c-in); }
+    .bar-out { background: var(--rt-c-out); }
+    .bar-cache { background: var(--rt-c-cache); }
+
+    .token-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .token-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .token-name {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      color: var(--rt-muted);
+    }
+    .swatch {
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .token-num {
+      font-family: var(--rt-mono);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .steps-card {
+      padding: 10px;
+    }
+    .run-block-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 2px 6px 8px;
+    }
+    .run-block-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--rt-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .run-block-meta {
+      font-family: var(--rt-mono);
+      font-size: 11px;
+      color: var(--rt-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .step-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 9px 11px;
+      border-radius: 8px;
+      font-size: 12px;
+      transition: background 0.12s ease;
+    }
+    .step-row:hover {
+      background: var(--rt-surface-hover);
+    }
+    .step-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .step-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1;
+    }
+    .step-idx {
+      font-family: var(--rt-mono);
+      color: var(--rt-muted);
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+    .step-model {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .cache-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: var(--rt-mono);
+      flex-shrink: 0;
+      border: 1px solid transparent;
+    }
+    .cache-pill.miss {
+      color: #dc2626;
+      background: rgba(220, 38, 38, 0.1);
+      border-color: rgba(220, 38, 38, 0.25);
+    }
+    .cache-pill.hit {
+      color: var(--rt-live);
+      background: rgba(22, 163, 74, 0.1);
+      border-color: rgba(22, 163, 74, 0.22);
+    }
+    :root[data-theme="dark"] .cache-pill.miss {
+      color: #fca5a5;
+      background: rgba(239, 68, 68, 0.16);
+      border-color: rgba(239, 68, 68, 0.35);
+    }
+    :root[data-theme="dark"] .cache-pill.hit {
+      color: #86efac;
+      background: rgba(74, 222, 128, 0.12);
+      border-color: rgba(74, 222, 128, 0.28);
+    }
+    .step-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-family: var(--rt-mono);
+      font-size: 11px;
+    }
+    .step-perf-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .step-lat {
+      color: var(--rt-text);
+    }
+    .step-tps {
+      color: var(--rt-c-out);
+      font-weight: 600;
+    }
+    .step-tok {
+      color: var(--rt-muted);
+      white-space: nowrap;
+    }
+
+    .notice {
+      font-size: 11px;
+      color: var(--rt-muted);
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: var(--rt-surface);
+      border: 1px solid var(--rt-border);
+    }
+    .empty {
+      text-align: center;
+      color: var(--rt-muted);
+      padding: 36px 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app">
+    <div class="empty">正在读取本轮 RUN 遥测数据…</div>
+  </div>
+
+  <script>
+    const $app = document.getElementById('app');
+    let selectedRunIndex = null;
+    let lastHash = '';
+
+    function syncTheme() {
+      const root = document.documentElement;
+      const paramTheme = new URLSearchParams(window.location.search).get('theme');
+      if (paramTheme === 'dark' || paramTheme === 'light') {
+        root.setAttribute('data-theme', paramTheme);
+        return;
+      }
+      const explicit = root.getAttribute('data-theme');
+      if (explicit === 'dark' || explicit === 'light') return;
+      // 若宿主通过 CSS 注入了暗色背景或 class，自动同步 data-theme="dark"
+      const bg = getComputedStyle(document.body).backgroundColor;
+      const m = bg && bg.match(/\d+/g);
+      if (m && m.length >= 3) {
+        const lum = (0.299 * Number(m[0]) + 0.587 * Number(m[1]) + 0.114 * Number(m[2])) / 255;
+        if (lum < 0.5) {
+          root.setAttribute('data-theme', 'dark');
+          return;
+        }
+      }
+      if (root.classList.contains('dark') || document.body.classList.contains('dark')) {
+        root.setAttribute('data-theme', 'dark');
+      }
+    }
+    syncTheme();
+
+    function getConversationId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('conversationId') || '';
+    }
+
+    function fmtNum(n) {
+      if (n === null || n === undefined) return '—';
+      const num = Number(n);
+      if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+      return String(num);
+    }
+
+    function fmtMs(ms) {
+      if (ms === null || ms === undefined) return '—';
+      if (ms < 1000) return `${ms}<span class="kpi-unit">ms</span>`;
+      return `${(ms / 1000).toFixed(2)}<span class="kpi-unit">s</span>`;
+    }
+
+    function fmtMsPlain(ms) {
+      if (ms === null || ms === undefined) return '—';
+      return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(2)}s`;
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function render(data) {
+      if (!data || !data.found || !data.runs || data.runs.length === 0) {
+        $app.innerHTML = '<div class="empty">当前对话暂无模型调用记录。</div>';
+        return;
+      }
+
+      const runs = data.runs;
+      const latestIndex = runs[runs.length - 1].runIndex;
+      if (selectedRunIndex === null || !runs.some(r => r.runIndex === selectedRunIndex)) {
+        selectedRunIndex = latestIndex;
+      }
+      const run = runs.find(r => r.runIndex === selectedRunIndex) || runs[runs.length - 1];
+
+      const total = Math.max(1, run.totalTokens);
+      const pIn = ((run.inputTokens / total) * 100).toFixed(2);
+      const pOut = ((run.outputTokens / total) * 100).toFixed(2);
+      const pCache = ((run.cacheReadTokens / total) * 100).toFixed(2);
+
+      const optionsHtml = runs
+        .slice()
+        .reverse()
+        .map(r => {
+          const label = `#${r.runIndex} · ${r.promptPreview || 'Run'} (${r.stepCount} steps)`;
+          const sel = r.runIndex === run.runIndex ? 'selected' : '';
+          return `<option value="${r.runIndex}" ${sel}>${escapeHtml(label)}</option>`;
+        })
+        .join('');
+
+      const runBlocksHtml = runs
+        .slice()
+        .reverse()
+        .map(r => {
+          const stepsHtml = r.steps.map(s => {
+            const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
+            const tps = s.tps !== null ? `${s.tps} t/s` : '—';
+            const tok = `In ${fmtNum(s.inputTokens)} · Out ${fmtNum(s.outputTokens)} · Cache ${fmtNum(s.cacheReadTokens)}`;
+            const cacheDenom = s.inputTokens + s.cacheReadTokens;
+            const isMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
+            const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
+            const pillHtml = isMiss
+              ? `<span class="cache-pill miss">Cache Miss</span>`
+              : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
+            return `
+              <div class="step-row">
+                <div class="step-top">
+                  <div class="step-title">
+                    <span class="step-idx">#${s.stepIndex ?? '?'}</span>
+                    <span class="step-model" title="${escapeHtml(s.model)}">${escapeHtml(s.model)}</span>
+                  </div>
+                  ${pillHtml}
+                </div>
+                <div class="step-bottom">
+                  <div class="step-perf-group">
+                    <span class="step-lat">${lat}</span>
+                    <span class="step-tps">${tps}</span>
+                  </div>
+                  <span class="step-tok">${tok}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          const title = r.promptPreview || `Run #${r.runIndex}`;
+          const metaParts = [`#${r.runIndex}`, `${r.stepCount} steps`];
+          if (r.avgLatencyMs !== null) metaParts.push(fmtMsPlain(r.avgLatencyMs));
+          if (r.effectiveTps !== null) metaParts.push(`${r.effectiveTps} t/s`);
+
+          return `
+            <div class="card steps-card">
+              <div class="run-block-head">
+                <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+                <div class="run-block-meta">${metaParts.join(' · ')}</div>
+              </div>
+              <div class="step-list">${stepsHtml}</div>
+            </div>
+          `;
+        })
+        .join('');
+
+      const timingNotice = run.timedSteps === 0
+        ? `<div class="notice">此轮暂无 Hook 毫秒计时（可能发生在插件启用前，或正在首步等待中）。</div>`
+        : '';
+
+      $app.innerHTML = `
+        <div class="topbar">
+          <select id="run-select" class="run-select">${optionsHtml}</select>
+          <span class="badge ${run.isRunning ? 'live' : ''}">
+            <span class="dot"></span>
+            ${run.isRunning ? 'Running' : 'Done'}
+          </span>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="kpi-label">Avg Step Latency (≈TTFT+Gen)</div>
+            <div class="kpi-value">${fmtMs(run.avgLatencyMs)}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Effective Speed</div>
+            <div class="kpi-value">${run.effectiveTps !== null ? `${run.effectiveTps}<span class="kpi-unit">tok/s</span>` : '—'}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Output Tokens</div>
+            <div class="kpi-value">${fmtNum(run.outputTokens)}</div>
+          </div>
+          <div class="card">
+            <div class="kpi-label">Cache Hit Rate</div>
+            <div class="kpi-value">${run.cacheHitRate}<span class="kpi-unit">%</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">Token Usage (4 Items)</div>
+          <div class="bar">
+            <div class="bar-seg bar-in" style="width:${pIn}%"></div>
+            <div class="bar-seg bar-out" style="width:${pOut}%"></div>
+            <div class="bar-seg bar-cache" style="width:${pCache}%"></div>
+          </div>
+          <div class="token-grid">
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-in)"></span>Input</span>
+              <span class="token-num">${fmtNum(run.inputTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-out)"></span>Output</span>
+              <span class="token-num">${fmtNum(run.outputTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-cache)"></span>Cache Read</span>
+              <span class="token-num">${fmtNum(run.cacheReadTokens)}</span>
+            </div>
+            <div class="token-item">
+              <span class="token-name">Total</span>
+              <span class="token-num">${fmtNum(run.totalTokens)}</span>
+            </div>
+          </div>
+        </div>
+
+        ${timingNotice}
+
+        ${runBlocksHtml}
+      `;
+
+      const selEl = document.getElementById('run-select');
+      if (selEl) {
+        selEl.addEventListener('change', (e) => {
+          selectedRunIndex = Number(e.target.value);
+          lastHash = '';
+          poll();
+        });
+      }
+    }
+
+    async function poll() {
+      try {
+        const convId = getConversationId();
+        const url = convId
+          ? `/api/telemetry?conversationId=${encodeURIComponent(convId)}`
+          : '/api/telemetry';
+        const res = await fetch(url);
+        const data = await res.json();
+        const hash = `${data.updatedAt}:${selectedRunIndex}:${data.runs?.length || 0}`;
+        if (hash !== lastHash) {
+          lastHash = hash;
+          render(data);
+        }
+      } catch {
+        // 忽略短暂轮询异常
+      }
+    }
+
+    poll();
+    setInterval(() => {
+      if (!document.hidden) poll();
+    }, 1500);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) poll();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "run-telemetry",
+  "displayName": "Run Telemetry",
+  "version": "0.1.0",
+  "description": "Display per-run LLM latency, effective token speed, cache hit/miss status, and 4-part token usage (Input, Output, Cache Read, Total) in the side pane.",
+  "author": {
+    "name": "a1398394385",
+    "url": "https://github.com/a1398394385"
+  },
+  "homepage": "https://github.com/a1398394385/antigravity-run-telemetry",
+  "repository": "https://github.com/a1398394385/antigravity-run-telemetry",
+  "license": "MIT",
+  "keywords": [
+    "antigravity",
+    "plugin",
+    "telemetry",
+    "tokens",
+    "latency",
+    "sidecar"
+  ]
+}

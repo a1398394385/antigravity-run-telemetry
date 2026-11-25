@@ -1,0 +1,37 @@
+{
+  "run-telemetry-timing": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node ./hooks/record_timing.mjs",
+        "timeout": 3
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ./hooks/record_timing.mjs",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "node ./hooks/record_timing.mjs",
+        "timeout": 3
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node ./hooks/record_timing.mjs",
+        "timeout": 3
+      }
+    ]
+  }
+}
