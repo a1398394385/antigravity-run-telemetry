@@ -49,9 +49,16 @@
     }
 
     * { box-sizing: border-box; }
+    html {
+      scrollbar-gutter: stable;
+      overflow-x: hidden;
+    }
     html, body {
       margin: 0;
       padding: 0;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
       background: var(--rt-bg);
       color: var(--rt-text);
       font-family: var(--rt-sans);
