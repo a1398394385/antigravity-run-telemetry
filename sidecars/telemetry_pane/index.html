@@ -67,6 +67,15 @@
       max-width: 720px;
       margin: 0 auto;
     }
+    body.is-context {
+      overflow: hidden;
+      height: 100vh;
+    }
+    .wrap.is-context {
+      height: 100vh;
+      padding-bottom: 0;
+      gap: 10px;
+    }
 
     .nav-tabs {
       display: grid;
@@ -79,7 +88,8 @@
     }
     .ctx-frame {
       width: 100%;
-      height: calc(100vh - 68px);
+      flex: 1;
+      min-height: 0;
       border: 0;
       display: block;
       background: transparent;
@@ -651,13 +661,43 @@
       `;
     }
 
+    function setContextLayout(on) {
+      document.body.classList.toggle('is-context', on);
+      $app.classList.toggle('is-context', on);
+    }
+
+    function detectIsDark() {
+      const explicit = document.documentElement.getAttribute('data-theme');
+      if (explicit === 'dark') return true;
+      if (explicit === 'light') return false;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
     function renderContextTab() {
-      const search = window.location.search || '';
+      setContextLayout(true);
+      const sp = new URLSearchParams(window.location.search);
+      sp.set('theme', detectIsDark() ? 'dark' : 'light');
       $app.innerHTML = `
         ${renderNavBarHtml()}
-        <iframe id="ctx-frame" class="ctx-frame" src="/context.html${escapeHtml(search)}"></iframe>
+        <iframe id="ctx-frame" class="ctx-frame" src="/context.html?${escapeHtml(sp.toString())}"></iframe>
       `;
       bindNavBar();
+      const frame = document.getElementById('ctx-frame');
+      if (frame) {
+        frame.addEventListener('load', () => {
+          try {
+            const rootStyle = document.documentElement.style;
+            const vars = {};
+            for (let i = 0; i < rootStyle.length; i++) {
+              const k = rootStyle[i];
+              if (k.startsWith('--')) vars[k] = rootStyle.getPropertyValue(k);
+            }
+            if (Object.keys(vars).length && frame.contentWindow) {
+              frame.contentWindow.postMessage({ type: 'theme-change', variables: vars, theme: vars }, '*');
+            }
+          } catch {}
+        });
+      }
     }
 
     function bindNavBar() {
@@ -667,9 +707,11 @@
           if (!next || next === activeTab) return;
           activeTab = next;
           if (activeTab === 'session') {
+            setContextLayout(false);
             lastHash = '';
             pollSession();
           } else if (activeTab === 'daily') {
+            setContextLayout(false);
             lastDailyHash = '';
             pollDaily();
           } else if (activeTab === 'context') {
