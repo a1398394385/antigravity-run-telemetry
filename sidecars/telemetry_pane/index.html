@@ -48,9 +48,9 @@
       --rt-live: #4ade80;
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; scrollbar-width: none; -ms-overflow-style: none; }
+    ::-webkit-scrollbar { display: none; width: 0; height: 0; }
     html {
-      scrollbar-gutter: stable;
       overflow-x: hidden;
     }
     html, body {
