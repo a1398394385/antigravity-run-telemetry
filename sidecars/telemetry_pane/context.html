@@ -396,7 +396,7 @@
   const POLL_MS = 3000;
   const FINISHED_PREVIEW_LIMIT = 5;
   const params = new URLSearchParams(location.search);
-  const rawLang = params.get('lang') || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+  const rawLang = params.get('lang') || window.__RT_SYSTEM_LANG__ || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
   const LANG = /^zh\b/i.test(rawLang) ? 'zh' : 'en';
   document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
 

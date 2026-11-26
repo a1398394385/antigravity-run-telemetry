@@ -565,7 +565,7 @@
   <script>
     const $app = document.getElementById('app');
     const urlParams = new URLSearchParams(window.location.search);
-    const rawLang = urlParams.get('lang') || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+    const rawLang = urlParams.get('lang') || window.__RT_SYSTEM_LANG__ || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
     const LANG = /^zh\b/i.test(rawLang) ? 'zh' : 'en';
     document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
 

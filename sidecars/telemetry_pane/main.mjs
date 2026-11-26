@@ -2,6 +2,7 @@
  * Run Telemetry Sidecar Backend
  * 复用 lib/telemetry.mjs 解析单会话每轮 Agent RUN 与跨会话每日汇总数据。
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -420,12 +421,48 @@ function computeDailySummary(targetDate) {
   };
 }
 
+function detectSystemLang() {
+  let raw = '';
+  try {
+    if (process.platform === 'darwin') {
+      const langs = execFileSync('defaults', ['read', '-g', 'AppleLanguages'], { encoding: 'utf8', timeout: 1000 });
+      const m = langs.match(/"([^"]+)"/) || langs.match(/^\s*([a-zA-Z0-9_-]+)/m);
+      raw = m ? m[1] : '';
+      if (!raw) {
+        raw = execFileSync('defaults', ['read', '-g', 'AppleLocale'], { encoding: 'utf8', timeout: 1000 }).trim();
+      }
+    } else if (process.platform === 'win32') {
+      const out = execFileSync('reg', ['query', 'HKCU\\Control Panel\\International', '/v', 'LocaleName'], { encoding: 'utf8', timeout: 1000 });
+      const m = out.match(/LocaleName\s+REG_SZ\s+(\S+)/i);
+      raw = m ? m[1] : '';
+    }
+  } catch {
+    // 忽略读取系统语言异常，回退环境变量
+  }
+  if (!raw) {
+    const envLang = process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || '';
+    if (envLang && !/^(C|POSIX)(\.|$)/i.test(envLang)) raw = envLang;
+  }
+  if (!raw) {
+    raw = Intl.DateTimeFormat().resolvedOptions().locale || 'en';
+  }
+  return /^zh\b/i.test(raw) ? 'zh' : 'en';
+}
+
+const SYSTEM_LANG = detectSystemLang();
+
+function serveHtml(filename) {
+  const html = readFileSync(join(__dirname, filename), 'utf-8')
+    .replace('<head>', `<head><script>window.__RT_SYSTEM_LANG__=${JSON.stringify(SYSTEM_LANG)};</script>`);
+  return new Response(html, {
+    contentType: 'text/html; charset=utf-8',
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+
 const app = new SidecarApp();
 
-app.page('/', () => new Response(readFileSync(join(__dirname, 'index.html'), 'utf-8'), {
-  contentType: 'text/html; charset=utf-8',
-  headers: { 'Cache-Control': 'no-store' },
-}));
+app.page('/', () => serveHtml('index.html'));
 
 app.api('/api/telemetry', async (data) => {
   const convId = data.conversationId || app.config.conversationId || '';
@@ -488,10 +525,7 @@ app.api('/api/daily', (data) => {
   return computeDailySummary(date);
 }, 'GET');
 
-app.page('/context.html', () => new Response(readFileSync(join(__dirname, 'context.html'), 'utf-8'), {
-  contentType: 'text/html; charset=utf-8',
-  headers: { 'Cache-Control': 'no-store' },
-}));
+app.page('/context.html', () => serveHtml('context.html'));
 
 app.api('/api/report', async (data) => {
   try {
