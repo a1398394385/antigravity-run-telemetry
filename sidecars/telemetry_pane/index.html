@@ -260,13 +260,18 @@
 
     .token-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(4, auto);
+      justify-content: space-between;
       gap: 8px;
+    }
+    .wrap.wrap-tokens .token-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .token-item {
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
     .token-name {
       display: flex;
@@ -274,6 +279,7 @@
       gap: 5px;
       font-size: 11px;
       color: var(--rt-muted);
+      white-space: nowrap;
     }
     .swatch {
       width: 7px;
@@ -528,7 +534,7 @@
     .wrap.wrap-steps .step-tok {
       flex-wrap: wrap;
     }
-    .tok-chip.cost {
+    .step-cost {
       color: var(--rt-text);
       font-weight: 600;
     }
@@ -802,8 +808,14 @@
     }
 
     function syncUnifiedWrap() {
-      $app.classList.remove('wrap-summary', 'wrap-steps');
+      $app.classList.remove('wrap-summary', 'wrap-steps', 'wrap-tokens');
       if (activeTab === 'context') return;
+      for (const el of $app.querySelectorAll('.token-grid')) {
+        if (el.scrollWidth > el.clientWidth + 1) {
+          $app.classList.add('wrap-tokens');
+          break;
+        }
+      }
       for (const el of $app.querySelectorAll('.run-block-summary')) {
         if (el.scrollWidth > el.clientWidth + 1) {
           $app.classList.add('wrap-summary');
@@ -950,8 +962,7 @@
           tokChip('in', t('tokIn'), s.inputTokens),
           tokChip('out', t('tokOut'), s.outputTokens),
           tokChip('cache', t('tokCache'), s.cacheReadTokens),
-          stepCostStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(stepCostStr)}</span>` : '',
-        ].filter(Boolean).join('');
+        ].join('');
         const cacheDenom = s.inputTokens + s.cacheReadTokens;
         const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
         const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
@@ -972,6 +983,7 @@
             </div>
             <div class="step-bottom">
               <div class="step-perf-group">
+                ${stepCostStr ? `<span class="step-cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(stepCostStr)}</span>` : ''}
                 <span class="step-lat">${lat}</span>
                 <span class="step-tps">${tps}</span>
               </div>
@@ -990,8 +1002,7 @@
         tokChip('out', t('tokOut'), r.outputTokens),
         tokChip('cache', t('tokCache'), r.cacheReadTokens),
         tokChip('total', t('tokTotal'), r.totalTokens),
-        runCostStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(runCostStr)}</span>` : '',
-      ].filter(Boolean).join('');
+      ].join('');
       const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
 
       const caret = isExpanded ? '▾' : '▸';
@@ -1008,6 +1019,7 @@
             </div>
             <div class="run-block-summary">
               <div class="run-block-perf">
+                ${runCostStr ? `<span class="step-cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(runCostStr)}</span>` : ''}
                 <span class="step-lat">${escapeHtml(t('avgPrefix', { lat: avgLat }))}</span>
                 <span class="step-tps">${avgTps}</span>
               </div>
@@ -1159,8 +1171,7 @@
                   tokChip('out', t('tokOut'), m.outputTokens),
                   tokChip('cache', t('tokCache'), m.cacheReadTokens),
                   tokChip('total', t('tokTotal'), m.totalTokens),
-                  costStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(costStr)}</span>` : '',
-                ].filter(Boolean).join('');
+                ].join('');
                 return `
                   <div class="step-row">
                     <div class="step-top">
@@ -1172,6 +1183,7 @@
                     </div>
                     <div class="step-bottom">
                       <div class="step-perf-group">
+                        ${costStr ? `<span class="step-cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(costStr)}</span>` : ''}
                         <span class="step-lat">${lat}</span>
                         <span class="step-tps">${tps}</span>
                       </div>
