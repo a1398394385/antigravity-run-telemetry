@@ -326,7 +326,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       font-family: var(--rt-mono);
       font-size: 11px;
     }
@@ -334,6 +334,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .run-block-tok,
     .step-tok {
@@ -342,6 +344,7 @@
       gap: 9px;
       color: var(--rt-muted);
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .tok-chip {
       display: inline-flex;
@@ -498,7 +501,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       font-family: var(--rt-mono);
       font-size: 11px;
     }
@@ -506,6 +509,18 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .wrap.force-wrap .run-block-summary,
+    .wrap.force-wrap .step-bottom {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+    }
+    .wrap.force-wrap .run-block-tok,
+    .wrap.force-wrap .step-tok {
+      flex-wrap: wrap;
     }
     .step-lat {
       color: var(--rt-text);
@@ -766,6 +781,29 @@
           <button type="button" class="nav-tab ${activeTab === 'context' ? 'active' : ''}" data-tab="context">${escapeHtml(t('navContext'))}</button>
         </div>
       `;
+    }
+
+    function syncUnifiedWrap() {
+      if (activeTab === 'context') {
+        $app.classList.remove('force-wrap');
+        return;
+      }
+      $app.classList.remove('force-wrap');
+      const rows = $app.querySelectorAll('.run-block-summary, .step-bottom');
+      let overflow = false;
+      for (const el of rows) {
+        if (el.scrollWidth > el.clientWidth + 1) {
+          overflow = true;
+          break;
+        }
+      }
+      if (overflow) $app.classList.add('force-wrap');
+    }
+
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => syncUnifiedWrap()).observe($app);
+    } else {
+      window.addEventListener('resize', syncUnifiedWrap);
     }
 
     function setContextLayout(on) {
@@ -1061,6 +1099,7 @@
           pollSession();
         });
       }
+      syncUnifiedWrap();
     }
 
     function renderDaily(data) {
@@ -1160,6 +1199,7 @@
         lastDailyHash = '';
         pollDaily();
       });
+      syncUnifiedWrap();
     }
 
     async function pollSession() {
