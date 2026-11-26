@@ -70,12 +70,19 @@
 
     .nav-tabs {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 4px;
       padding: 4px;
       background: var(--rt-surface);
       border: 1px solid var(--rt-border);
       border-radius: 9px;
+    }
+    .ctx-frame {
+      width: 100%;
+      height: calc(100vh - 68px);
+      border: 0;
+      display: block;
+      background: transparent;
     }
     .nav-tab {
       appearance: none;
@@ -639,8 +646,18 @@
         <div class="nav-tabs" role="tablist">
           <button type="button" class="nav-tab ${activeTab === 'session' ? 'active' : ''}" data-tab="session">Session</button>
           <button type="button" class="nav-tab ${activeTab === 'daily' ? 'active' : ''}" data-tab="daily">Daily</button>
+          <button type="button" class="nav-tab ${activeTab === 'context' ? 'active' : ''}" data-tab="context">Context</button>
         </div>
       `;
+    }
+
+    function renderContextTab() {
+      const search = window.location.search || '';
+      $app.innerHTML = `
+        ${renderNavBarHtml()}
+        <iframe id="ctx-frame" class="ctx-frame" src="/context.html${escapeHtml(search)}"></iframe>
+      `;
+      bindNavBar();
     }
 
     function bindNavBar() {
@@ -652,9 +669,11 @@
           if (activeTab === 'session') {
             lastHash = '';
             pollSession();
-          } else {
+          } else if (activeTab === 'daily') {
             lastDailyHash = '';
             pollDaily();
+          } else if (activeTab === 'context') {
+            renderContextTab();
           }
         });
       });
@@ -1038,7 +1057,15 @@
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) return;
       if (activeTab === 'session') pollSession();
-      else pollDaily();
+      else if (activeTab === 'daily') pollDaily();
+    });
+    window.addEventListener('message', (event) => {
+      if (event.data?.type === 'theme-change') {
+        const frame = document.getElementById('ctx-frame');
+        if (frame?.contentWindow) {
+          frame.contentWindow.postMessage(event.data, '*');
+        }
+      }
     });
   </script>
 </body>

@@ -8,6 +8,7 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Response, SidecarApp } from 'sidecar_sdk';
 import { buildSessionDailyBuckets, formatModelDisplayName, parseRuns, readJsonl, toLocalDateKey } from '../../lib/telemetry.mjs';
+import { getContextReport, getTaskLog, refreshCatalog } from './context_service.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ID_RE = /^[0-9a-f-]{8,}$/i;
@@ -487,4 +488,26 @@ app.api('/api/daily', (data) => {
   return computeDailySummary(date);
 }, 'GET');
 
+app.page('/context.html', () => new Response(readFileSync(join(__dirname, 'context.html'), 'utf-8'), {
+  contentType: 'text/html; charset=utf-8',
+  headers: { 'Cache-Control': 'no-store' },
+}));
+
+app.api('/api/report', async (data) => {
+  try {
+    return await getContextReport(data.conversationId || app.config.conversationId, data.workspace);
+  } catch (err) {
+    return { error: 'failed', message: err.message };
+  }
+}, 'POST');
+
+app.api('/api/task-log', async (data) => {
+  try {
+    return await getTaskLog(data?.conversationId || app.config.conversationId, data?.stepIdx);
+  } catch (err) {
+    return { error: 'failed', message: err.message };
+  }
+}, 'POST');
+
 app.run();
+refreshCatalog();

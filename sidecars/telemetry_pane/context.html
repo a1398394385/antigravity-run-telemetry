@@ -1,0 +1,1324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antigravity 状态栏</title>
+<script src="/preload.js"></script>
+<style>
+  :root {
+    --c-system: #8e9196;
+    --c-user: #58a6ff;
+    --c-agent: #a371f7;
+    --c-tool: #e3a008;
+    --c-custom: #3fb950;
+    --c-sysmsg: #f85149;
+    --c-running: #3fb950;
+    --c-done: #3fb950;
+    --c-error: #f85149;
+    --c-cancelled: #8e9196;
+    --fg: var(--foreground, #e3e3e3);
+    --dim: var(--muted-foreground, #9aa0a6);
+    --line: var(--border, rgba(127, 127, 127, .25));
+    --surface: rgba(127, 127, 127, .06);
+    --surface-hover: rgba(127, 127, 127, .10);
+    --code-bg: rgba(127, 127, 127, .08);
+    --empty: rgba(127, 127, 127, .24);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--fg);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-button { display: none; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(127, 127, 127, .30);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 127, 127, .55); }
+
+  /* preload.js zeroes the body's padding, so the page padding lives here */
+  main { padding: 12px 14px 18px; }
+  .dim { color: var(--dim); }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+
+  /* header */
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .model { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; }
+  .live { width: 6px; height: 6px; border-radius: 50%; background: var(--empty); flex: none; }
+  .live.on { background: var(--c-running); }
+  .usage { margin: 2px 0 10px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .usage .big { font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
+  .usage .of { color: var(--dim); }
+  .usage .pct { margin-left: auto; font-size: 13px; font-weight: 600; }
+  button.btn {
+    font: inherit; font-size: 11.5px; color: var(--dim); cursor: pointer; white-space: nowrap;
+    background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  button.btn:hover { color: var(--fg); border-color: var(--dim); background: var(--surface); }
+  button.btn.sm { font-size: 11px; padding: 2px 7px; }
+
+  /* Claude Code style segmented linear context bar */
+  .ctx-bar-wrap { margin-bottom: 10px; }
+  .ctx-bar-track-wrap { position: relative; }
+  .ctx-bar {
+    height: 8px;
+    width: 100%;
+    border-radius: 999px;
+    background: var(--empty);
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    gap: 1.5px;
+    padding: 0;
+  }
+  .ctx-budget-tick {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 1.5px;
+    background: rgba(200, 200, 200, .75);
+    border-radius: 1px;
+    cursor: help;
+    z-index: 2;
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .ctx-budget-tick:hover {
+    transform: scaleX(1.6);
+    background: var(--fg);
+  }
+  .ctx-bar .seg {
+    height: 100%;
+    min-width: 3px;
+    border-radius: 1.5px;
+    cursor: pointer;
+    transition: width .25s ease, opacity .15s ease, filter .15s ease;
+  }
+  .ctx-bar .seg:first-child { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+  .ctx-bar .seg:last-child { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+  .ctx-bar.is-hovering .seg:not(.active) { opacity: .35; }
+  .ctx-bar .seg.active { filter: brightness(1.15); }
+  .ctx-bar-readout {
+    margin-top: 6px;
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--dim);
+  }
+  .ctx-bar-readout .dot-swatch {
+    width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block;
+  }
+  .ctx-bar-readout strong { color: var(--fg); font-weight: 500; }
+
+  /* sections */
+  section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+  h2 {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--dim); margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; display: inline-flex; align-items: center; gap: 5px; }
+  .note { font-size: 12px; color: var(--dim); margin: -2px 0 8px; }
+  .group + .group { margin-top: 8px; }
+  .row {
+    display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 46px; align-items: center; gap: 8px; padding: 2.5px 0;
+    transition: opacity .15s ease;
+  }
+  .row > span:nth-child(2) {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .row.is-dimmed { opacity: .38; }
+  .row.is-highlighted { opacity: 1; }
+  .row .tok { text-align: right; }
+  .row .p { text-align: right; color: var(--dim); font-size: 12px; }
+  .cache-sub-inline { font-size: 11px; color: var(--dim); }
+  .models-bar {
+    height: 5px;
+    width: 100%;
+    border-radius: 999px;
+    background: var(--empty);
+    display: flex;
+    overflow: hidden;
+    gap: 1.5px;
+    margin-bottom: 8px;
+  }
+  .models-bar .mseg {
+    height: 100%;
+    min-width: 3px;
+    border-radius: 1px;
+  }
+  .models-bar .mseg:first-child { border-top-left-radius: 999px; border-bottom-left-radius: 999px; }
+  .models-bar .mseg:last-child { border-top-right-radius: 999px; border-bottom-right-radius: 999px; }
+
+  .row .tok.span-end { grid-column: 3 / 5; }
+  .row .tok.strong { font-weight: 600; }
+  .cost-toggle {
+    width: calc(100% + 8px);
+    margin: 0 -4px;
+    padding: 2.5px 4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .cost-toggle:hover { background: var(--surface-hover); }
+  .cost-label { display: flex; align-items: center; gap: 5px; min-width: 0; }
+  .cost-label > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cost-chevron { font-size: 10px; color: var(--dim); flex: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .cost-chevron { transition: transform .15s ease; }
+  }
+  .cost-toggle[aria-expanded="true"] .cost-chevron { transform: rotate(90deg); }
+  .cost-models {
+    margin: 2px 0 6px 4px;
+    padding-left: 10px;
+    border-left: 1.5px solid var(--line);
+  }
+  .cost-models:last-child { margin-bottom: 0; }
+  .cost-models[hidden] { display: none; }
+  .cost-warn { color: var(--c-tool); margin: 4px 0 0; }
+  @media (forced-colors: active) {
+    .ctx-bar, .models-bar { border: 1px solid CanvasText; }
+    .ctx-bar .seg, .models-bar .mseg, .mark { forced-color-adjust: none; }
+    .cost-warn { color: CanvasText; }
+  }
+  :where(button, [tabindex="0"]):focus-visible {
+    outline: 2px solid var(--c-user);
+    outline-offset: 2px;
+  }
+  .model-row-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mark { width: 8px; height: 8px; border-radius: 50%; }
+  .mark.sq { border-radius: 2px; }
+  .mark.free { background: transparent; border: 1.5px solid var(--empty); }
+
+  /* background tasks */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 500;
+    border: 1px solid var(--line); color: var(--dim);
+  }
+  .status-pill.running {
+    color: var(--c-running);
+    border-color: rgba(63, 185, 80, .4);
+    background: rgba(63, 185, 80, .1);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--dim);
+  }
+  .status-dot.running {
+    background: var(--c-running);
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, .7);
+    animation: pulse 1.8s infinite;
+  }
+  .status-dot.done { background: var(--c-done); }
+  .status-dot.error { background: var(--c-error); }
+  .status-dot.cancelled, .status-dot.unknown { background: var(--c-cancelled); }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(63, 185, 80, .6); }
+    70% { box-shadow: 0 0 0 5px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .tasks-empty { font-size: 12px; color: var(--dim); padding: 2px 0; }
+  .task-list { display: flex; flex-direction: column; gap: 6px; }
+  .task-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .task-card.is-running {
+    border-color: rgba(63, 185, 80, .35);
+  }
+  .task-toggle {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    padding: 7px 9px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .task-toggle:hover { background: var(--surface-hover); }
+  .task-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .tag {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    flex: none;
+  }
+  .tag.daemon { color: var(--c-agent); border-color: rgba(163, 113, 247, .4); }
+  .tag.timer { color: var(--c-tool); border-color: rgba(227, 160, 8, .4); }
+  .tag.subagent { color: var(--c-user); border-color: rgba(88, 166, 255, .4); }
+  .task-time { font-size: 11px; color: var(--dim); flex: none; }
+  .chevron {
+    font-size: 10px; color: var(--dim); flex: none;
+    transition: transform .15s ease;
+  }
+  .task-card.is-expanded .chevron { transform: rotate(90deg); }
+
+  .task-detail {
+    border-top: 1px solid var(--line);
+    padding: 8px 9px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .task-meta-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .task-meta-item { min-width: 0; overflow-wrap: anywhere; }
+  .task-meta-item strong { color: var(--fg); font-weight: 500; }
+  .task-block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .code-box {
+    margin: 0;
+    padding: 7px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--code-bg);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 140px;
+    overflow: auto;
+    color: var(--fg);
+  }
+  .code-box.log-box { max-height: 220px; }
+  .tasks-more { margin-top: 7px; display: flex; justify-content: center; }
+
+  .files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; }
+  .files .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files .dir { display: block; font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .files .tok { color: var(--dim); font-size: 12px; align-self: start; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .ck-active-tag { color: var(--c-running); font-size: 12px; font-weight: 500; }
+
+  @supports (color: color-mix(in srgb, white, black)) {
+    :root {
+      --surface: color-mix(in srgb, var(--fg) 4%, transparent);
+      --surface-hover: color-mix(in srgb, var(--fg) 7%, transparent);
+      --code-bg: color-mix(in srgb, var(--fg) 5%, transparent);
+      --empty: color-mix(in srgb, var(--dim) 24%, transparent);
+    }
+    ::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dim) 30%, transparent); }
+    ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--dim) 55%, transparent); }
+    .ctx-budget-tick { background: color-mix(in srgb, var(--fg) 75%, transparent); }
+    .status-pill.running {
+      border-color: color-mix(in srgb, var(--c-running) 40%, transparent);
+      background: color-mix(in srgb, var(--c-running) 10%, transparent);
+    }
+    .status-dot.running { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-running) 70%, transparent); }
+    .task-card.is-running { border-color: color-mix(in srgb, var(--c-running) 35%, var(--line)); }
+    .tag.daemon { border-color: color-mix(in srgb, var(--c-agent) 40%, transparent); }
+    .tag.timer { border-color: color-mix(in srgb, var(--c-tool) 40%, transparent); }
+    .tag.subagent { border-color: color-mix(in srgb, var(--c-user) 40%, transparent); }
+  }
+
+  .empty { margin: 48px 8px; text-align: center; color: var(--dim); }
+  footer { margin-top: 16px; font-size: 11px; color: var(--dim); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<main id="main"><p class="empty">Loading…</p></main>
+
+<script>
+(() => {
+  const POLL_MS = 3000;
+  const FINISHED_PREVIEW_LIMIT = 5;
+
+  const BAR_SEGMENT_DEFS = [
+    { key: 'system', label: 'System', color: 'var(--c-system)' },
+    { key: 'user', label: 'User', color: 'var(--c-user)' },
+    { key: 'agent', label: 'Agent', color: 'var(--c-agent)' },
+    { key: 'tools', label: 'Tools', color: 'var(--c-tool)' },
+    { key: 'custom', label: 'Custom', color: 'var(--c-custom)' },
+    { key: 'sysmsg', label: 'SysMsg', color: 'var(--c-sysmsg)' },
+  ];
+
+  const CONVERSATION = {
+    user: 'var(--c-user)',
+    agent: 'var(--c-agent)',
+    tool: 'var(--c-tool)',
+    system_messages: 'var(--c-sysmsg)',
+  };
+  const SYSTEM = new Set(['system_prompt', 'system_tools', 'system_overhead']);
+  const MODEL_COLORS = ['var(--c-agent)', 'var(--c-user)', 'var(--c-custom)', 'var(--c-tool)', 'var(--c-sysmsg)'];
+
+  const STATUS_LABELS = {
+    running: '运行中',
+    done: '已完成',
+    error: '失败',
+    cancelled: '已取消',
+    unknown: '未知',
+  };
+
+  const params = new URLSearchParams(location.search);
+  const conversationId = (window.sidecar && window.sidecar.conversationId) || params.get('conversationId') || '';
+  const doFetch = (window.sidecar && window.sidecar.fetch) || fetch;
+  const main = document.getElementById('main');
+
+  let workspace = '';
+  let report = null;
+  let lastJson = '';
+  let reportSeq = 0;
+  let reportController = null;
+  let reportInFlightKey = null;
+  const expandedTaskIds = new Set();
+  const taskLogs = new Map(); // step_idx -> { loading, data, error }
+  const taskLogSeq = new Map(); // step_idx -> latest seq
+  const taskLogControllers = new Map(); // step_idx -> { ctrl, startedSeq }
+  const prevTaskStatuses = new Map(); // step_idx -> previous status string
+  const pendingFinalLogAt = new Map(); // step_idx -> reportSeq when task left running
+  let showFinishedTasks = false;
+  let costTotalExpanded = false;
+  let costSubExpanded = false;
+  let ckExpanded = false;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = (v, fb = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fb;
+  };
+
+  function apiPost(url, payload, signal) {
+    return doFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  }
+
+  function setLiveOnline(online) {
+    const dot = document.querySelector('.live');
+    if (dot) dot.classList.toggle('on', Boolean(online));
+  }
+
+  function fmtTok(n) {
+    if (n >= 1e6) { const v = n / 1e6; return Number.isInteger(v) ? `${v}M` : `${v.toFixed(1)}M`; }
+    if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
+    return String(n);
+  }
+
+  function fmtUsd(v) {
+    if (v === null || v === undefined || !Number.isFinite(Number(v))) return '-';
+    const n = Number(v);
+    if (n <= 0) return '$0.00';
+    if (n < 0.01) return `$${n.toFixed(4)}`;
+    if (n < 0.10) return `$${n.toFixed(3)}`;
+    return `$${n.toFixed(2)}`;
+  }
+
+  function fmtUsdExact(v) {
+    if (v === null || v === undefined || !Number.isFinite(Number(v))) return '-';
+    return `$${Number(v).toFixed(4)}`;
+  }
+
+  function fmtBytes(n) {
+    if (!n) return '0 B';
+    if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${n} B`;
+  }
+
+  function fmtRelativeTime(epochSec) {
+    if (!epochSec) return '-';
+    const diff = Math.max(0, Math.floor(Date.now() / 1000) - epochSec);
+    if (diff < 60) return `${diff}s 前`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m 前`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h 前`;
+    return `${Math.floor(diff / 86400)}d 前`;
+  }
+
+  function fmtDateTime(epochSec) {
+    if (!epochSec) return '-';
+    return new Date(epochSec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function fmtShortDateTime(epochSec) {
+    if (!epochSec) return '';
+    const d = new Date(epochSec * 1000);
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async function copyText(text, btn, idleLabel) {
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      } finally {
+        ta.remove();
+      }
+    }
+    if (btn) {
+      btn.textContent = copied ? '已复制' : '复制失败';
+      setTimeout(() => { btn.textContent = idleLabel; }, 1500);
+    }
+  }
+
+  function barLayout(r) {
+    const raw = Array.isArray(r.grid_segments) ? r.grid_segments : [0, 0, 0, 0, 0];
+    const sysMsgCat = (r.categories || []).find((c) => c.key === 'system_messages');
+    const sysMsgTok = sysMsgCat ? sysMsgCat.tokens : 0;
+    const values = [raw[0] || 0, raw[1] || 0, raw[2] || 0, raw[3] || 0, raw[4] || 0, sysMsgTok];
+    const limit = r.limit_tokens > 0 ? r.limit_tokens : Math.max(1, r.used_tokens || 0);
+    const nonZeroSum = values.reduce((a, b) => a + b, 0);
+    const denom = Math.max(limit, nonZeroSum || 1);
+
+    const segs = BAR_SEGMENT_DEFS.map((def, i) => {
+      const tokens = values[i];
+      const pctOfLimit = r.limit_tokens > 0 ? (tokens / r.limit_tokens * 100) : (nonZeroSum ? tokens / nonZeroSum * 100 : 0);
+      const widthPct = tokens > 0 ? (tokens / denom * 100) : 0;
+      return { ...def, tokens, pctOfLimit, widthPct };
+    }).filter((seg) => seg.tokens > 0);
+    return { segs, denom };
+  }
+
+  function defaultReadoutHtml(r) {
+    if (!r.limit_tokens) {
+      return `<span>已用 <strong>${fmtTok(r.used_tokens)}</strong> tokens</span>`;
+    }
+    return `<span>已用 <strong>${r.used_pct.toFixed(1)}%</strong> · 剩余 <strong>${fmtTok(r.free_tokens)}</strong> tokens</span>`;
+  }
+
+  function contextBarHtml(r) {
+    const { segs, denom } = barLayout(r);
+    const barInner = segs.map((seg) => (
+      `<span class="seg" data-seg="${esc(seg.key)}" `
+      + `data-label="${esc(seg.label)}" data-color="${esc(seg.color)}" `
+      + `data-tokens="${seg.tokens}" data-pct="${seg.pctOfLimit.toFixed(1)}" `
+      + `style="width:${seg.widthPct.toFixed(3)}%;background:${seg.color}" `
+      + `title="${esc(seg.label)}: ${fmtTok(seg.tokens)} tokens (${seg.pctOfLimit.toFixed(1)}%)"></span>`
+    )).join('');
+
+    let tickHtml = '';
+    if (r.request_budget_tokens > 0 && r.limit_tokens > 0 && r.request_budget_tokens < r.limit_tokens) {
+      const tickLeft = (r.request_budget_tokens / denom * 100).toFixed(3);
+      const budgetPct = (r.request_budget_tokens / r.limit_tokens * 100).toFixed(1);
+      tickHtml = `<span class="ctx-budget-tick" id="ctx-budget-tick" `
+        + `data-tokens="${r.request_budget_tokens}" data-pct="${budgetPct}" `
+        + `style="left:${tickLeft}%" `
+        + `title="裁剪/压缩阈值: ${fmtTok(r.request_budget_tokens)} tokens (${budgetPct}%)"></span>`;
+    }
+
+    return `
+      <div class="ctx-bar-wrap">
+        <div class="ctx-bar-track-wrap">
+          <div class="ctx-bar" id="ctx-bar">${barInner}</div>
+          ${tickHtml}
+        </div>
+        <div class="ctx-bar-readout" id="ctx-bar-readout">${defaultReadoutHtml(r)}</div>
+      </div>`;
+  }
+
+  function bindBarHover(r) {
+    const bar = document.getElementById('ctx-bar');
+    const tick = document.getElementById('ctx-budget-tick');
+    const readout = document.getElementById('ctx-bar-readout');
+    const tokenSection = document.getElementById('token-usage-section');
+    if (!bar || !readout) return;
+
+    const rows = tokenSection ? Array.from(tokenSection.querySelectorAll('.row[data-group]')) : [];
+
+    const reset = () => {
+      bar.classList.remove('is-hovering');
+      bar.querySelectorAll('.seg.active').forEach((el) => el.classList.remove('active'));
+      rows.forEach((row) => row.classList.remove('is-dimmed', 'is-highlighted'));
+      readout.innerHTML = defaultReadoutHtml(r);
+    };
+
+    const activate = (key) => {
+      const segEl = bar.querySelector(`.seg[data-seg="${key}"]`);
+      if (!segEl) return;
+      bar.classList.add('is-hovering');
+      bar.querySelectorAll('.seg').forEach((el) => el.classList.toggle('active', el === segEl));
+      rows.forEach((row) => {
+        const match = row.dataset.group === key;
+        row.classList.toggle('is-highlighted', match);
+        row.classList.toggle('is-dimmed', !match);
+      });
+      const { label, color, tokens, pct } = segEl.dataset;
+      readout.innerHTML = `<span class="dot-swatch" style="background:${color}"></span>`
+        + `<strong>${esc(label)}</strong>`
+        + `<span class="num">${fmtTok(Number(tokens))} tokens (${pct}%)</span>`;
+    };
+
+    bar.querySelectorAll('.seg').forEach((el) => {
+      el.addEventListener('mouseenter', () => activate(el.dataset.seg));
+    });
+    bar.addEventListener('mouseleave', reset);
+    if (tick) {
+      tick.addEventListener('mouseenter', () => {
+        readout.innerHTML = `<span class="dot-swatch" style="background:var(--fg)"></span>`
+          + `<strong>裁剪/压缩阈值</strong>`
+          + `<span class="num">${fmtTok(Number(tick.dataset.tokens))} tokens (${tick.dataset.pct}%)</span>`;
+      });
+      tick.addEventListener('mouseleave', reset);
+    }
+  }
+
+  function taskCardHtml(t) {
+    const isExpanded = expandedTaskIds.has(t.step_idx);
+    const isSubagent = t.tool === 'invoke_subagent';
+    const statusLabel = (t.tool === 'schedule' && t.status === 'done')
+      ? '已调度'
+      : (STATUS_LABELS[t.status] || t.status);
+    const title = t.title || t.command || t.task_id || `Task #${t.step_idx}`;
+    const badges = [];
+    if (t.is_daemon) badges.push('<span class="tag daemon">Daemon</span>');
+    if (t.tool === 'schedule') badges.push('<span class="tag timer">Timer</span>');
+    if (isSubagent) badges.push('<span class="tag subagent">Subagent</span>');
+
+    let detailHtml = '';
+    if (isExpanded) {
+      let logBlockHtml = '';
+      if (!isSubagent) {
+        const logState = taskLogs.get(t.step_idx);
+        let logText = '';
+        let logHint = '';
+        if (logState && logState.loading && !logState.data) {
+          logText = '正在读取日志…';
+        } else if (logState && logState.error) {
+          logText = t.output_preview || `日志读取失败: ${logState.error}`;
+        } else if (logState && logState.data && logState.data.exists) {
+          logText = logState.data.content || '(日志文件为空)';
+          const mtimeSec = logState.data.mtimeMs ? Math.floor(logState.data.mtimeMs / 1000) : t.log_mtime;
+          const sizeVal = logState.data.size ?? t.log_size;
+          logHint = `${fmtBytes(sizeVal)}${mtimeSec ? ` · 更新于 ${fmtRelativeTime(mtimeSec)}` : ''}${logState.data.truncated ? ' · 仅显示末尾 32 KB' : ''}`;
+        } else {
+          logText = t.output_preview || '(暂无输出日志)';
+          if (t.has_log) logHint = `${fmtBytes(t.log_size)}`;
+        }
+        logBlockHtml = `
+          <div>
+            <div class="task-block-head">
+              <span>执行输出${logHint ? ` · ${esc(logHint)}` : ''}</span>
+              <button type="button" class="btn sm task-refresh-log" data-step="${t.step_idx}">刷新日志</button>
+            </div>
+            <pre class="code-box log-box" id="task-log-${t.step_idx}">${esc(logText)}</pre>
+          </div>`;
+      }
+
+      const cmdLabel = isSubagent ? '任务指令 (Prompt)' : '执行命令';
+      const copyLabel = isSubagent ? '复制指令' : '复制命令';
+      const cmdDisplay = t.command || (isSubagent ? '(无指令内容)' : '(无命令详情)');
+      const idDisplay = t.task_id ? (isSubagent ? t.task_id.slice(0, 8) : t.task_id.split(/[\\/]/).pop()) : '';
+      detailHtml = `
+        <div class="task-detail">
+          <div class="task-meta-grid">
+            <span class="task-meta-item">状态: <strong>${esc(statusLabel)}</strong></span>
+            ${isSubagent && t.subagent_type ? `<span class="task-meta-item">类型: <strong>${esc(t.subagent_type)}</strong></span>` : ''}
+            <span class="task-meta-item">启动: <strong>${esc(fmtDateTime(t.started_at))}</strong></span>
+            ${idDisplay ? `<span class="task-meta-item mono" title="${esc(t.task_id)}">ID: ${esc(idDisplay)}</span>` : ''}
+          </div>
+          <div>
+            <div class="task-block-head">
+              <span>${cmdLabel}</span>
+              <button type="button" class="btn sm task-copy-cmd" data-step="${t.step_idx}">${copyLabel}</button>
+            </div>
+            <pre class="code-box">${esc(cmdDisplay)}</pre>
+          </div>
+          ${logBlockHtml}
+        </div>`;
+    }
+
+    return `
+      <div class="task-card ${t.status === 'running' ? 'is-running' : ''} ${isExpanded ? 'is-expanded' : ''}" data-step="${t.step_idx}">
+        <button type="button" class="task-toggle" data-step="${t.step_idx}" aria-expanded="${isExpanded}">
+          <span class="status-dot ${esc(t.status)}" title="${esc(statusLabel)}"></span>
+          <span class="task-title" title="${esc(title)}">${esc(title)}</span>
+          ${badges.join('')}
+          <span class="task-time num" title="${esc(fmtDateTime(t.started_at))}">${esc(fmtRelativeTime(t.started_at))}</span>
+          <span class="chevron">▸</span>
+        </button>
+        ${detailHtml}
+      </div>`;
+  }
+
+  function tasksSectionHtml(r) {
+    const allTasks = Array.isArray(r.background_tasks) ? r.background_tasks : [];
+    const running = allTasks.filter((t) => t.status === 'running');
+    const finished = allTasks.filter((t) => t.status !== 'running');
+
+    let pillHtml = '<span class="status-pill">暂无</span>';
+    if (running.length > 0) {
+      pillHtml = `<span class="status-pill running"><span class="status-dot running"></span>${running.length} 运行中</span>`;
+    } else if (allTasks.length > 0) {
+      pillHtml = `<span class="status-pill">无运行中任务 (共 ${allTasks.length} 条)</span>`;
+    }
+
+    let bodyHtml = '<div class="tasks-empty">当前会话尚无后台任务记录</div>';
+    if (allTasks.length > 0) {
+      const visibleFinished = showFinishedTasks ? finished : finished.slice(0, FINISHED_PREVIEW_LIMIT);
+      const visibleTasks = [...running, ...visibleFinished];
+      const moreCount = finished.length - visibleFinished.length;
+      const moreBtn = finished.length > FINISHED_PREVIEW_LIMIT
+        ? `<div class="tasks-more"><button type="button" class="btn sm" id="toggle-finished-tasks">${showFinishedTasks ? '收起历史任务' : `展开其余 ${moreCount} 条历史任务`}</button></div>`
+        : '';
+      bodyHtml = `<div class="task-list">${visibleTasks.map(taskCardHtml).join('')}</div>${moreBtn}`;
+    }
+
+    return `<section id="tasks-section"><h2>后台任务 <span class="hint">${pillHtml}</span></h2>${bodyHtml}</section>`;
+  }
+
+  function bindTasksEvents() {
+    const sec = document.getElementById('tasks-section');
+    if (!sec || !report) return;
+
+    sec.querySelectorAll('.task-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const stepIdx = Number(btn.dataset.step);
+        if (expandedTaskIds.has(stepIdx)) {
+          expandedTaskIds.delete(stepIdx);
+          renderTasksOnly();
+        } else {
+          expandedTaskIds.add(stepIdx);
+          renderTasksOnly();
+          const task = (report.background_tasks || []).find((t) => t.step_idx === stepIdx);
+          if (task && task.tool !== 'invoke_subagent') {
+            fetchTaskLog(stepIdx, false);
+          }
+        }
+      });
+    });
+
+    sec.querySelectorAll('.task-copy-cmd').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const stepIdx = Number(btn.dataset.step);
+        const task = (report.background_tasks || []).find((t) => t.step_idx === stepIdx);
+        if (task) copyText(task.command || '', btn, task.tool === 'invoke_subagent' ? '复制指令' : '复制命令');
+      });
+    });
+
+    sec.querySelectorAll('.task-refresh-log').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fetchTaskLog(Number(btn.dataset.step), true);
+      });
+    });
+
+    const toggleFinished = document.getElementById('toggle-finished-tasks');
+    if (toggleFinished) {
+      toggleFinished.addEventListener('click', () => {
+        showFinishedTasks = !showFinishedTasks;
+        renderTasksOnly();
+      });
+    }
+  }
+
+  function renderTasksOnly() {
+    if (!report) return;
+    const existing = document.getElementById('tasks-section');
+    if (!existing) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = tasksSectionHtml(report);
+    const next = tmp.firstElementChild;
+    existing.replaceWith(next);
+    bindTasksEvents();
+  }
+
+  async function fetchTaskLog(stepIdx, force) {
+    if (!conversationId) return;
+    const prev = taskLogs.get(stepIdx);
+    const neededSeq = pendingFinalLogAt.get(stepIdx) || 0;
+    const active = taskLogControllers.get(stepIdx);
+    // Keep any valid in-flight fetch alive unless user forced or it predates task completion
+    if (!force && active && active.startedSeq >= neededSeq) return;
+
+    const seq = (taskLogSeq.get(stepIdx) || 0) + 1;
+    taskLogSeq.set(stepIdx, seq);
+    if (active && active.ctrl) active.ctrl.abort();
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    const startedSeq = reportSeq;
+    taskLogControllers.set(stepIdx, { ctrl, startedSeq });
+
+    if (!prev || force) {
+      taskLogs.set(stepIdx, { loading: true, data: prev ? prev.data : null, error: null });
+    }
+    try {
+      const res = await apiPost('/api/task-log', { conversationId, stepIdx }, ctrl ? ctrl.signal : undefined);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (taskLogSeq.get(stepIdx) !== seq) return;
+      if (data.error) {
+        taskLogs.set(stepIdx, { loading: false, data: prev ? prev.data : null, error: data.message || data.error });
+      } else {
+        const finishedSeq = pendingFinalLogAt.get(stepIdx);
+        if (finishedSeq !== undefined && startedSeq >= finishedSeq) {
+          pendingFinalLogAt.delete(stepIdx);
+        }
+        const hadError = Boolean(prev && prev.error);
+        const changed = hadError
+          || !prev
+          || !prev.data
+          || prev.data.mtimeMs !== data.mtimeMs
+          || prev.data.size !== data.size
+          || prev.data.content !== data.content;
+        taskLogs.set(stepIdx, { loading: false, data, error: null });
+        if (!changed && !force) return;
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      if (taskLogSeq.get(stepIdx) !== seq) return;
+      taskLogs.set(stepIdx, { loading: false, data: prev ? prev.data : null, error: err.message || 'network error' });
+    } finally {
+      if (taskLogSeq.get(stepIdx) === seq) {
+        taskLogControllers.delete(stepIdx);
+      }
+    }
+    if (expandedTaskIds.has(stepIdx)) {
+      const logEl = document.getElementById(`task-log-${stepIdx}`);
+      const wasAtBottom = logEl ? (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 24) : false;
+      renderTasksOnly();
+      if (wasAtBottom) {
+        const nextLogEl = document.getElementById(`task-log-${stepIdx}`);
+        if (nextLogEl) nextLogEl.scrollTop = nextLogEl.scrollHeight;
+      }
+    }
+  }
+
+  function categoryGroup(key) {
+    if (key === 'user') return 'user';
+    if (key === 'agent') return 'agent';
+    if (key === 'tool') return 'tools';
+    if (key === 'system_messages') return 'sysmsg';
+    if (SYSTEM.has(key)) return 'system';
+    return 'custom';
+  }
+
+  function categoryRow(c) {
+    const color = CONVERSATION[c.key] || (SYSTEM.has(c.key) ? 'var(--c-system)' : 'var(--c-custom)');
+    const shape = CONVERSATION[c.key] ? '' : ' sq';
+    return `<div class="row" data-group="${categoryGroup(c.key)}"><span class="mark${shape}" style="background:${color}"></span><span>${esc(c.name)}</span>`
+      + `<span class="tok num">${fmtTok(num(c.tokens))}</span><span class="p num">${num(c.pct).toFixed(1)}%</span></div>`;
+  }
+
+  function cacheRateColor(rate) {
+    if (rate >= 80) return 'var(--c-custom)';
+    if (rate >= 40) return 'var(--c-tool)';
+    return 'var(--c-sysmsg)';
+  }
+
+  function cacheRowHtml(r) {
+    const cs = r.cache_stats;
+    if (!cs || !cs.generations) {
+      return '<div class="row cache-row"><span class="mark free"></span><span class="dim">Cache hit</span>'
+        + '<span class="tok num dim">-</span><span class="p num">-</span></div>';
+    }
+    const hasLastInput = typeof cs.last_hit_rate === 'number';
+    const rate = hasLastInput ? cs.last_hit_rate : null;
+    const color = hasLastInput ? cacheRateColor(rate) : 'var(--dim)';
+    const rateStr = hasLastInput ? `${rate.toFixed(1)}%` : '-';
+    const sessionRateStr = typeof cs.session_hit_rate === 'number' ? `${cs.session_hit_rate.toFixed(1)}%` : '-';
+    const sessionStr = typeof cs.session_hit_rate === 'number' ? ` · 累计 ${sessionRateStr}` : '';
+    const lastPart = hasLastInput
+      ? `最近一次: 命中 ${fmtTok(num(cs.last_cache_read_tokens))} / ${fmtTok(num(cs.last_total_input_tokens))} (${rateStr})`
+      : '最近一次: 无输入缓存数据';
+    const title = `${lastPart} · 会话累计 (${num(cs.generations)} 次调用): 命中 ${fmtTok(num(cs.session_cache_read_tokens))} / ${fmtTok(num(cs.session_total_input_tokens))} (${sessionRateStr})`;
+    const countsText = hasLastInput
+      ? `${fmtTok(num(cs.last_cache_read_tokens))}/${fmtTok(num(cs.last_total_input_tokens))}`
+      : '-';
+    return `<div class="row cache-row" title="${esc(title)}">`
+      + `<span class="mark" style="background:${color}"></span>`
+      + `<span>Cache hit<span class="cache-sub-inline">${esc(sessionStr)}</span></span>`
+      + `<span class="tok num dim">${countsText}</span>`
+      + `<span class="p num" style="color:${color};font-weight:600">${rateStr}</span>`
+      + `</div>`;
+  }
+
+  function outputRowHtml(r) {
+    const os = r.output_stats;
+    if (!os || !os.session_output_tokens) return '';
+    const hasThink = os.session_thinking_tokens > 0;
+    const thinkSub = hasThink ? `<span class="cache-sub-inline"> · 思考 ${fmtTok(os.session_thinking_tokens)}</span>` : '';
+    const pctStr = hasThink && typeof os.thinking_pct === 'number' ? `${os.thinking_pct.toFixed(1)}%` : '';
+    const title = `本会话累计输出: ${fmtTok(os.session_output_tokens)} (思考 ${fmtTok(os.session_thinking_tokens)} / 回复 ${fmtTok(os.session_response_tokens)})`
+      + ` · 最近一轮: ${fmtTok(os.last_output_tokens)} (思考 ${fmtTok(os.last_thinking_tokens)})`;
+    return `<div class="row output-row" title="${esc(title)}">`
+      + `<span class="mark" style="background:var(--c-agent)"></span>`
+      + `<span>Output${thinkSub}</span>`
+      + `<span class="tok num dim">${fmtTok(os.session_output_tokens)}</span>`
+      + `<span class="p num">${pctStr}</span>`
+      + `</div>`;
+  }
+
+  function fmtTps(tps) {
+    if (tps === null || tps === undefined || !Number.isFinite(Number(tps))) return '-';
+    const n = Number(tps);
+    return n >= 1 ? String(Math.round(n)) : n.toFixed(1);
+  }
+
+  function speedRowHtml(r) {
+    const ss = r.speed_stats;
+    if (!ss || typeof ss.session_tps !== 'number' || !Number.isFinite(ss.session_tps)) return '';
+    const sessionStr = `≈${fmtTps(ss.session_tps)} tok/s`;
+    const tipParts = [
+      `估算输出速率 (含首字等待，参考 CC Switch 口径: 输出 ≥ 200 tokens 且耗时 ≥ 1s)`,
+      `会话均值 ${sessionStr} (${num(ss.eligible_calls)} 次 · ${fmtTok(num(ss.output_tokens))} tok / ${(num(ss.duration_ms) / 1000).toFixed(1)}s)`,
+    ];
+    if (typeof ss.last_tps === 'number' && Number.isFinite(ss.last_tps)) {
+      tipParts.push(`最近一次 ≈${fmtTps(ss.last_tps)} tok/s (${fmtTok(num(ss.last_output_tokens))} tok / ${(num(ss.last_latency_ms) / 1000).toFixed(1)}s)`);
+    }
+    if (typeof ss.first_token_median_ms === 'number' && Number.isFinite(ss.first_token_median_ms)) {
+      tipParts.push(`首字中位数 ≈${(ss.first_token_median_ms / 1000).toFixed(1)}s`);
+    }
+    return `<div class="row speed-row" title="${esc(tipParts.join(' · '))}">`
+      + `<span class="mark" style="background:var(--c-user)"></span>`
+      + `<span>Speed</span>`
+      + `<span class="tok num span-end dim">${esc(sessionStr)}</span>`
+      + `</div>`;
+  }
+
+  function categories(r) {
+    const conv = r.categories.filter((c) => CONVERSATION[c.key]);
+    const rest = r.categories.filter((c) => !CONVERSATION[c.key]);
+    const limit = num(r.limit_tokens);
+    const freeTok = num(r.free_tokens);
+    const freePct = limit ? `${(freeTok / limit * 100).toFixed(1)}%` : '-';
+    const freeVal = limit ? fmtTok(freeTok) : 'Unknown';
+    const free = `<div class="row"><span class="mark free"></span><span class="dim">Free space</span>`
+      + `<span class="tok num">${freeVal}</span><span class="p num">${freePct}</span></div>`;
+    const note = r.heading === 'Token usage by category' ? '' : `<p class="note">${esc(r.heading)}</p>`;
+    return `<section id="token-usage-section"><h2>Token usage</h2>${contextBarHtml(r)}${note}
+      <div class="group">${conv.map(categoryRow).join('')}</div>
+      ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}
+      <div class="group">${free}${cacheRowHtml(r)}${outputRowHtml(r)}${speedRowHtml(r)}</div></section>`;
+  }
+
+  function checkpoints(r) {
+    const ck = r.checkpoint_view;
+    if (!ck) return '';
+    const items = Array.isArray(ck.items) && ck.items.length
+      ? ck.items
+      : [{ number: ck.active_number, text: ck.active_text, start: 0, end: 0, created_at: 0, active: true }];
+    const activeItem = items.find((it) => it.active) || items[0];
+    const olderItems = items.filter((it) => !it.active);
+
+    const activeLabel = `#${num(activeItem.number)} · ${activeItem.text}`;
+    const activeSpan = activeItem.end > activeItem.start ? `steps ${num(activeItem.start)}–${num(activeItem.end)}` : '';
+    const activeTime = fmtShortDateTime(activeItem.created_at);
+    const activeTip = [`Checkpoint ${num(activeItem.number)}: ${activeItem.text}`, activeSpan, activeTime].filter(Boolean).join(' · ');
+
+    let bodyHtml;
+    if (olderItems.length > 0) {
+      const historyRows = olderItems.map((it) => {
+        const label = `#${num(it.number)} · ${it.text}`;
+        const span = it.end > it.start ? `steps ${num(it.start)}–${num(it.end)}` : '';
+        const when = fmtShortDateTime(it.created_at) || span || '-';
+        const tip = [`Checkpoint ${num(it.number)}: ${it.text}`, span, 'archived'].filter(Boolean).join(' · ');
+        return `<div class="row" title="${esc(tip)}">`
+          + `<span class="mark" style="background:var(--empty)"></span>`
+          + `<span class="dim">${esc(label)}</span>`
+          + `<span class="tok num span-end dim">${esc(when)}</span>`
+          + `</div>`;
+      }).join('');
+      bodyHtml = `<button type="button" class="cost-toggle row" id="ck-toggle" aria-expanded="${ckExpanded ? 'true' : 'false'}" aria-controls="ck-history-list" title="${esc(activeTip)}">`
+        + `<span class="mark" style="background:var(--c-running)"></span>`
+        + `<span class="cost-label"><span>${esc(activeLabel)}</span><span class="cost-chevron" aria-hidden="true">▸</span></span>`
+        + `<span class="tok num span-end ck-active-tag">Active</span>`
+        + `</button>`
+        + `<div class="cost-models" id="ck-history-list"${ckExpanded ? '' : ' hidden'}>${historyRows}</div>`;
+    } else {
+      bodyHtml = `<div class="row" title="${esc(activeTip)}">`
+        + `<span class="mark" style="background:var(--c-running)"></span>`
+        + `<span>${esc(activeLabel)}</span>`
+        + `<span class="tok num span-end ck-active-tag">Active</span>`
+        + `</div>`;
+    }
+    return `<section id="checkpoints-section"><h2>Checkpoints</h2><div class="group">${bodyHtml}</div></section>`;
+  }
+
+  function splitPath(path) {
+    const norm = String(path || '').replace(/\\/g, '/');
+    const trimmed = norm.replace(/\/$/, '');
+    const i = trimmed.lastIndexOf('/');
+    const name = trimmed.slice(i + 1) + (norm.endsWith('/') ? '/' : '');
+    let dir = i > 0 ? trimmed.slice(0, i) : '';
+    if (conversationId) {
+      const escCid = conversationId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      dir = dir.replace(new RegExp(`^.*/brain/${escCid}(?=/|$)`, 'i'), 'conversation folder');
+    }
+    return { name, dir };
+  }
+
+  function files(title, hint, items) {
+    if (!items || !items.length) return '';
+    const rows = items.map((f) => {
+      const { name, dir } = splitPath(f.path);
+      return `<li title="${esc(f.path)}"><span class="name">${esc(name)}<span class="dir">\u200e${esc(dir)}\u200e</span></span>`
+        + `<span class="tok num">${f.tokens > 0 ? fmtTok(f.tokens) : ''}</span></li>`;
+    }).join('');
+    return `<section><h2>${title} <span class="hint">${hint}</span></h2><ul class="files">${rows}</ul></section>`;
+  }
+
+  function costModelsListHtml(listId, items, isExpanded) {
+    if (!items.length) return '';
+    const rows = items.map((m, i) => {
+      const mColor = MODEL_COLORS[i % MODEL_COLORS.length];
+      const mHasUsd = typeof m.estimated_cost_usd === 'number';
+      const mCost = mHasUsd ? fmtUsd(m.estimated_cost_usd) : '-';
+      const mShare = num(m.share_pct).toFixed(1);
+      const mTip = mHasUsd
+        ? `${m.model}: ${num(m.calls)} calls · ${mShare}% · Input ${fmtUsdExact(m.input_cost_usd)} / Cache ${fmtUsdExact(m.cache_read_cost_usd)} / Output ${fmtUsdExact(m.output_cost_usd)}`
+        : `${m.model}: ${num(m.calls)} calls · No public list price`;
+      return `<div class="row" title="${esc(mTip)}">`
+        + `<span class="mark" style="background:${mColor}"></span>`
+        + `<span>${esc(m.model)}</span>`
+        + `<span class="tok num span-end dim">${mCost}</span>`
+        + `</div>`;
+    }).join('');
+    return `<div class="cost-models" id="${esc(listId)}"${isExpanded ? '' : ' hidden'}>${rows}</div>`;
+  }
+
+  function costDisclosureHtml({ toggleId, listId, markClass, markBg, label, amountText, amountClass, tip, items, isExpanded }) {
+    if (!items.length) {
+      return `<div class="row" title="${esc(tip)}">`
+        + `<span class="mark${markClass}" style="background:${markBg}"></span>`
+        + `<span>${esc(label)}</span>`
+        + `<span class="tok num span-end ${amountClass}">${esc(amountText)}</span>`
+        + `</div>`;
+    }
+    return `<button type="button" class="cost-toggle row" id="${esc(toggleId)}" aria-expanded="${isExpanded ? 'true' : 'false'}" aria-controls="${esc(listId)}" title="${esc(tip)}">`
+      + `<span class="mark${markClass}" style="background:${markBg}"></span>`
+      + `<span class="cost-label"><span>${esc(label)}</span><span class="cost-chevron" aria-hidden="true">▸</span></span>`
+      + `<span class="tok num span-end ${amountClass}">${esc(amountText)}</span>`
+      + `</button>`
+      + costModelsListHtml(listId, items, isExpanded);
+  }
+
+  function costSectionHtml(r) {
+    const cs = r.cost_stats;
+    if (!cs || !cs.total_calls) {
+      return '<section id="cost-section"><h2>Estimated cost <span class="hint">List price</span></h2>'
+        + '<div class="tasks-empty">No model calls recorded</div></section>';
+    }
+    const mb = cs.main_breakdown || {};
+    const sb = cs.subagent_breakdown || {};
+    const hasPriced = num(cs.priced_calls) > 0 && typeof cs.total_usd === 'number';
+    const subCalls = num(sb.calls);
+    const subCount = num(sb.count);
+    const savedUsd = num(cs.cache_saved_usd);
+    const unpriced = num(cs.unpriced_calls);
+    const unpricedNames = Array.isArray(cs.unpriced_models) && cs.unpriced_models.length
+      ? cs.unpriced_models.join(', ')
+      : '';
+
+    const hintParts = [`${num(cs.total_calls)} calls`];
+    if (hasPriced && savedUsd >= 0.005) {
+      hintParts.push(`saved ~${fmtUsd(savedUsd)}`);
+    } else {
+      hintParts.push('list price');
+    }
+    const headTip = 'Estimated API equivalent from published Google Gemini / Anthropic Claude list prices (not subscription billing)';
+
+    let bodyHtml = '';
+    if (hasPriced) {
+      const inUsd = num(mb.input_usd) + num(sb.input_usd);
+      const cacheUsd = num(mb.cache_read_usd) + num(sb.cache_read_usd);
+      const outUsd = num(mb.output_usd) + num(sb.output_usd);
+      const totalUsd = Math.max(0, num(cs.total_usd));
+      const byModel = Array.isArray(cs.by_model) ? cs.by_model : [];
+      const subByModel = Array.isArray(cs.subagent_by_model) ? cs.subagent_by_model : [];
+
+      const totalTip = `Total ${fmtUsdExact(totalUsd)} (Input ${fmtUsdExact(inUsd)} / Cache ${fmtUsdExact(cacheUsd)} / Output ${fmtUsdExact(outUsd)})`
+        + (savedUsd > 0 ? ` · Cache saved ${fmtUsdExact(savedUsd)}` : '');
+
+      bodyHtml = costDisclosureHtml({
+        toggleId: 'cost-total-toggle',
+        listId: 'cost-total-models',
+        markClass: '',
+        markBg: 'var(--c-custom)',
+        label: 'Total',
+        amountText: `~${fmtUsd(totalUsd)}`,
+        amountClass: 'strong',
+        tip: totalTip,
+        items: byModel,
+        isExpanded: costTotalExpanded,
+      });
+
+      if (subCalls > 0) {
+        const subUsd = num(cs.subagent_usd);
+        const subPct = totalUsd > 0 ? (subUsd / totalUsd * 100) : 0;
+        const mainUsd = num(cs.main_usd);
+        const mainPct = totalUsd > 0 ? (mainUsd / totalUsd * 100) : 0;
+        const mainTip = `Main session only: ${num(mb.calls)} calls (${fmtUsdExact(mainUsd)}, ${mainPct.toFixed(1)}%) · Input ${fmtUsdExact(mb.input_usd)} / Cache ${fmtUsdExact(mb.cache_read_usd)} / Output ${fmtUsdExact(mb.output_usd)}`;
+        bodyHtml += `<div class="row" title="${esc(mainTip)}">`
+          + `<span class="mark sq" style="background:var(--c-user)"></span>`
+          + `<span class="dim">Main</span>`
+          + `<span class="tok num span-end dim">${esc(fmtUsd(mainUsd))}</span>`
+          + `</div>`;
+        const subTip = `Main: ${num(mb.calls)} calls (${fmtUsdExact(mainUsd)}) · Subagents (${subCount}): ${subCalls} calls (${fmtUsdExact(subUsd)}, ${subPct.toFixed(1)}%)`;
+        bodyHtml += costDisclosureHtml({
+          toggleId: 'cost-sub-toggle',
+          listId: 'cost-sub-models',
+          markClass: ' sq',
+          markBg: 'var(--c-system)',
+          label: `Subagents (${subCount})`,
+          amountText: fmtUsd(subUsd),
+          amountClass: 'dim',
+          tip: subTip,
+          items: subByModel,
+          isExpanded: costSubExpanded,
+        });
+      }
+      bodyHtml = `<div class="group">${bodyHtml}</div>`;
+    } else {
+      bodyHtml = `<div class="group"><div class="row" title="No published API list price available for the called models">`
+        + `<span class="mark free"></span>`
+        + `<span class="dim">No public list price${unpricedNames ? ` (${esc(unpricedNames)})` : ''}</span>`
+        + `<span class="tok num dim span-end">-</span>`
+        + `</div></div>`;
+    }
+
+    const warnParts = [];
+    if (hasPriced && unpriced > 0) {
+      warnParts.push(`Excluded ${unpriced} unpriced call(s)${unpricedNames ? ` (${esc(unpricedNames)})` : ''}`);
+    }
+    if (cs.incomplete) {
+      warnParts.push('Some subagent data was temporarily unavailable');
+    }
+    const warnHtml = warnParts.length
+      ? `<p class="note cost-warn"><span aria-hidden="true">⚠</span> ${warnParts.join(' · ')}</p>`
+      : '';
+
+    return `<section id="cost-section">`
+      + `<h2>Estimated cost</h2>`
+      + `${bodyHtml}${warnHtml}`
+      + `</section>`;
+  }
+
+  function modelsSectionHtml(r) {
+    const models = Array.isArray(r.model_usage) ? r.model_usage : [];
+    if (models.length <= 1) return '';
+    const barSegs = models.map((m, i) => {
+      const color = MODEL_COLORS[i % MODEL_COLORS.length];
+      const sharePct = num(m.share_pct);
+      return `<span class="mseg" style="width:${sharePct.toFixed(1)}%;background:${color}" `
+        + `title="${esc(m.model)}: ${fmtTok(num(m.total_tokens))} tokens (${sharePct.toFixed(1)}%)"></span>`;
+    }).join('');
+    const rows = models.map((m, i) => {
+      const color = MODEL_COLORS[i % MODEL_COLORS.length];
+      const calls = num(m.calls);
+      const sharePct = num(m.share_pct);
+      const hitStr = typeof m.cache_hit_rate === 'number' ? ` · 缓存命中 ${m.cache_hit_rate.toFixed(1)}%` : '';
+      const effortEntries = m.efforts && typeof m.efforts === 'object' ? Object.entries(m.efforts) : [];
+      const effortStr = effortEntries.length
+        ? ` · 思考强度: ${effortEntries.map(([k, v]) => `${k} ${num(v)}次`).join(', ')}`
+        : '';
+      const hasModelUsd = typeof m.estimated_cost_usd === 'number';
+      const costTip = hasModelUsd
+        ? ` · 估算 ${fmtUsdExact(m.estimated_cost_usd)} (输入 ${fmtUsdExact(m.input_cost_usd)} / 缓存 ${fmtUsdExact(m.cache_read_cost_usd)} / 输出 ${fmtUsdExact(m.output_cost_usd)})`
+        : ' · 暂无公开牌价';
+      const tip = `调用 ${calls} 次 · 输入 ${fmtTok(num(m.total_input_tokens))}${hitStr} · 输出 ${fmtTok(num(m.output_tokens))} (思考 ${fmtTok(num(m.thinking_tokens))})${costTip}${effortStr}`;
+      return `<div class="row" title="${esc(tip)}">`
+        + `<span class="mark" style="background:${color}"></span>`
+        + `<span class="model-row-name">${esc(m.model)}</span>`
+        + `<span class="tok num dim">${fmtTok(num(m.total_tokens))}</span>`
+        + `<span class="p num">${sharePct.toFixed(1)}%</span>`
+        + `</div>`;
+    }).join('');
+    return `<section id="models-section"><h2>Models</h2>`
+      + `<div class="models-bar">${barSegs}</div>`
+      + `<div class="group">${rows}</div></section>`;
+  }
+
+  function render(r) {
+    const scrollY = window.scrollY;
+    const limit = num(r.limit_tokens);
+    const used = num(r.used_tokens);
+    main.innerHTML = `
+      <div class="top">
+        <div class="model"><span class="live on" title="Live"></span>${esc(r.model)}</div>
+        <button type="button" class="btn" id="copy" title="Copy the report as the CLI prints it">Copy as text</button>
+      </div>
+      <div class="usage">
+        <span class="big num">${fmtTok(used)}</span>
+        <span class="of">/ ${limit ? fmtTok(limit) : 'Unknown'} tokens</span>
+        ${limit ? `<span class="pct num">${num(r.used_pct).toFixed(1)}%</span>` : ''}
+      </div>
+      ${categories(r)}
+      ${costSectionHtml(r)}
+      ${modelsSectionHtml(r)}
+      ${tasksSectionHtml(r)}
+      ${checkpoints(r)}
+      ${files('Knowledge files', '/rules', r.knowledge_files)}
+      ${files('Artifact files', '/artifact', r.artifact_files)}
+      <footer><span>Related: /artifact · /rewind</span><span>Updated ${esc(new Date(r.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}</span></footer>`;
+
+    document.getElementById('copy').addEventListener('click', (e) => {
+      if (report) copyText(report.text, e.currentTarget, 'Copy as text');
+    });
+    const bindDisclosure = (btnId, listId, getOpen, setOpen) => {
+      const btn = document.getElementById(btnId);
+      const list = document.getElementById(listId);
+      if (!btn || !list) return;
+      btn.addEventListener('click', () => {
+        const next = !getOpen();
+        setOpen(next);
+        btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+        list.hidden = !next;
+      });
+    };
+    bindDisclosure('cost-total-toggle', 'cost-total-models', () => costTotalExpanded, (v) => { costTotalExpanded = v; });
+    bindDisclosure('cost-sub-toggle', 'cost-sub-models', () => costSubExpanded, (v) => { costSubExpanded = v; });
+    bindDisclosure('ck-toggle', 'ck-history-list', () => ckExpanded, (v) => { ckExpanded = v; });
+    bindBarHover(r);
+    bindTasksEvents();
+    window.scrollTo(0, scrollY);
+  }
+
+  function showMessage(text) {
+    report = null;
+    lastJson = '';
+    main.innerHTML = `<p class="empty">${esc(text)}</p>`;
+  }
+
+  async function refreshExpandedRunningLogs() {
+    if (!report || !Array.isArray(report.background_tasks)) return;
+    const targets = report.background_tasks.filter(
+      (t) => t.tool !== 'invoke_subagent'
+        && expandedTaskIds.has(t.step_idx)
+        && (t.status === 'running' || pendingFinalLogAt.has(t.step_idx)),
+    );
+    await Promise.all(targets.map((t) => fetchTaskLog(t.step_idx, false)));
+  }
+
+  async function refresh(forceInput = false) {
+    if (document.hidden) return;
+    const inputKey = `${conversationId}|${workspace}`;
+    // Do not cancel an active fetch with identical inputs; only supersede stale workspace/conversation switches
+    if (reportController && !forceInput && reportInFlightKey === inputKey) return;
+    const seq = ++reportSeq;
+    if (reportController) reportController.abort();
+    const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    reportController = ctrl;
+    reportInFlightKey = inputKey;
+    try {
+      let data;
+      try {
+        const res = await apiPost('/api/report', { conversationId, workspace }, ctrl ? ctrl.signal : undefined);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+      } finally {
+        if (seq === reportSeq) {
+          reportController = null;
+          reportInFlightKey = null;
+        }
+      }
+      if (seq !== reportSeq) return;
+      if (data.error === 'no-conversation') return showMessage('Open a conversation to see its status bar.');
+      if (data.error === 'no-database') return showMessage('This conversation has no saved data yet. Send a message first.');
+      if (data.error) return showMessage(`Couldn't read this conversation: ${data.message || data.error}`);
+
+      const tasks = Array.isArray(data.background_tasks) ? data.background_tasks : [];
+      for (const t of tasks) {
+        if (prevTaskStatuses.get(t.step_idx) === 'running' && t.status !== 'running') {
+          pendingFinalLogAt.set(t.step_idx, seq);
+        } else if (t.status === 'running') {
+          pendingFinalLogAt.delete(t.step_idx);
+        }
+        prevTaskStatuses.set(t.step_idx, t.status);
+      }
+
+      const json = JSON.stringify(data);
+      if (json !== lastJson) {
+        lastJson = json;
+        report = data;
+        render(data);
+      }
+      setLiveOnline(true);
+      await refreshExpandedRunningLogs();
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      if (seq !== reportSeq) return;
+      setLiveOnline(false);
+      if (!report) {
+        showMessage(`暂时无法读取上下文状态: ${err?.message || '请稍后重试'}`);
+      }
+    }
+  }
+
+  document.addEventListener('visibilitychange', () => refresh(false));
+
+  function start() {
+    refresh(true);
+    setInterval(() => refresh(false), POLL_MS);
+    if (window.sidecar) {
+      if (typeof window.sidecar.onWorkspaceChange === 'function') {
+        window.sidecar.onWorkspaceChange((next) => {
+          const nextUri = Array.isArray(next) ? (next[0] || '') : '';
+          if (nextUri !== workspace) { workspace = nextUri; lastJson = ''; refresh(true); }
+        });
+      }
+      if (typeof window.sidecar.getWorkspaceUris === 'function') {
+        Promise.resolve(window.sidecar.getWorkspaceUris()).then((uris) => {
+          const nextUri = Array.isArray(uris) ? (uris[0] || '') : '';
+          if (nextUri && nextUri !== workspace) { workspace = nextUri; lastJson = ''; refresh(true); }
+        }).catch(() => {});
+      }
+    }
+  }
+  start();
+})();
+</script>
+</body>
+</html>
