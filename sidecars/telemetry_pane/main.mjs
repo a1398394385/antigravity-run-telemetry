@@ -109,18 +109,36 @@ function extractSwarmMembers(convId) {
   }
 }
 
+function unquoteArg(val) {
+  if (typeof val !== 'string') return '';
+  const s = val.trim();
+  if (s.startsWith('"') && s.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(s);
+      return typeof parsed === 'string' ? parsed.trim() : s;
+    } catch {
+      return s.slice(1, -1).trim();
+    }
+  }
+  return s;
+}
+
 function extractSubagentsFromTranscript(convId, transcriptRows) {
-  const callRoleById = new Map();
+  const pendingInvocations = [];
+  let lastLabel = '';
   const found = [];
   const seen = new Set();
 
   for (const row of transcriptRows) {
     if (Array.isArray(row.tool_calls)) {
       for (const tc of row.tool_calls) {
-        if (tc?.name === 'invoke_subagent' && tc?.id) {
+        if (tc?.name === 'invoke_subagent') {
           const args = tc.args || {};
-          const label = args.Role || args.TypeName || 'subagent';
-          callRoleById.set(tc.id, String(label));
+          const role = unquoteArg(args.Role || args.role);
+          const typeName = unquoteArg(args.TypeName || args.type_name);
+          const label = role || typeName || '';
+          pendingInvocations.push(label);
+          if (label) lastLabel = label;
         }
       }
     }
@@ -130,13 +148,9 @@ function extractSubagentsFromTranscript(convId, transcriptRows) {
         const cid = m[1];
         if (!cid || cid === convId || seen.has(cid)) continue;
         seen.add(cid);
-        let label = (row.tool_call_id && callRoleById.get(row.tool_call_id)) || '';
-        if (!label) {
-          for (const [, roleLabel] of callRoleById) {
-            label = roleLabel;
-          }
-        }
-        found.push({ conversationId: cid, kind: 'subagent', label: label || 'subagent' });
+        const queued = pendingInvocations.length > 0 ? pendingInvocations.shift() : '';
+        const label = queued || lastLabel || 'subagent';
+        found.push({ conversationId: cid, kind: 'subagent', label });
       }
     }
   }
