@@ -962,8 +962,8 @@
     const rest = r.categories.filter((c) => !CONVERSATION[c.key]);
     const note = r.heading === 'Token usage by category' ? '' : `<p class="note">${esc(r.heading)}</p>`;
     return `<section id="token-usage-section"><h2>Token usage</h2>${contextBarHtml(r)}${note}
-      <div class="group">${conv.map(categoryRow).join('')}</div>
-      ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}</section>`;
+      ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}
+      ${conv.length ? `<div class="group">${conv.map(categoryRow).join('')}</div>` : ''}</section>`;
   }
 
   function checkpoints(r) {
