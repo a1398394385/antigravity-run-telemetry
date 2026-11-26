@@ -356,12 +356,13 @@
       display: inline-flex;
       align-items: center;
       gap: 3px;
-      color: var(--rt-text);
+      color: var(--rt-muted);
     }
     .tok-chip svg {
       width: 12px;
       height: 12px;
       flex-shrink: 0;
+      opacity: 0.82;
     }
     .tok-chip.in svg { color: var(--rt-c-in); }
     .tok-chip.out svg { color: var(--rt-c-out); }
@@ -535,15 +536,15 @@
       flex-wrap: wrap;
     }
     .step-cost {
-      color: var(--rt-text);
-      font-weight: 600;
+      color: var(--rt-muted);
+      font-weight: 500;
     }
     .step-lat {
-      color: var(--rt-text);
+      color: var(--rt-muted);
     }
     .step-tps {
-      color: var(--rt-c-out);
-      font-weight: 600;
+      color: color-mix(in srgb, var(--rt-c-out) 75%, var(--rt-muted));
+      font-weight: 500;
     }
 
     .run-block-head.clickable {
@@ -606,7 +607,7 @@
         navSession: '会话',
         navDaily: '每天',
         navContext: '上下文',
-        avgLatency: '平均单步耗时 (≈TTFT+Gen)',
+        avgLatency: '平均单步耗时',
         effectiveSpeed: '有效输出速率',
         estCost: '估算费用',
         cacheHitRate: '缓存命中率',
@@ -644,7 +645,7 @@
         navSession: 'Session',
         navDaily: 'Daily',
         navContext: 'Context',
-        avgLatency: 'Avg Step Latency (≈TTFT+Gen)',
+        avgLatency: 'Avg Step Latency',
         effectiveSpeed: 'Effective Speed',
         estCost: 'Est. Cost',
         cacheHitRate: 'Cache Hit Rate',
