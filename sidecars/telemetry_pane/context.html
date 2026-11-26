@@ -389,20 +389,249 @@
 </style>
 </head>
 <body>
-<main id="main"><p class="empty">Loading…</p></main>
+<main id="main"><p class="empty" id="init-loading">Loading…</p></main>
 
 <script>
 (() => {
   const POLL_MS = 3000;
   const FINISHED_PREVIEW_LIMIT = 5;
+  const params = new URLSearchParams(location.search);
+  const rawLang = params.get('lang') || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+  const LANG = /^zh\b/i.test(rawLang) ? 'zh' : 'en';
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+
+  const I18N = {
+    zh: {
+      pageTitle: 'Antigravity 上下文状态',
+      loading: '正在读取上下文状态…',
+      seg_system: '系统',
+      seg_user: '用户',
+      seg_agent: '模型',
+      seg_tools: '工具',
+      seg_custom: '自定义',
+      seg_sysmsg: '系统消息',
+      st_running: '运行中',
+      st_done: '已完成',
+      st_error: '失败',
+      st_cancelled: '已取消',
+      st_unknown: '未知',
+      st_scheduled: '已调度',
+      ago_s: '{n}s 前',
+      ago_m: '{n}m 前',
+      ago_h: '{n}h 前',
+      ago_d: '{n}d 前',
+      copied: '已复制',
+      copyFailed: '复制失败',
+      copyAsText: '复制文本',
+      copyTitle: '复制 CLI 格式纯文本报告',
+      unknown: '未知',
+      live: '实时',
+      usedOnly: '已用 <strong>{used}</strong> tokens',
+      usedAndFree: '已用 <strong>{pct}%</strong> · 剩余 <strong>{free}</strong> tokens',
+      budgetThreshold: '裁剪/压缩阈值',
+      secTokenUsage: 'Token 占用',
+      secCost: '估算费用',
+      secModels: '模型分布',
+      secTasks: '后台任务',
+      secCheckpoints: '检查点',
+      secKnowledge: '知识库文件',
+      secArtifacts: '产物文件',
+      cat_user: '用户消息',
+      cat_agent: '模型回复',
+      cat_tool: '工具调用',
+      cat_system_messages: '系统消息',
+      cat_system_prompt: '系统提示词',
+      cat_system_tools: '内置工具',
+      cat_system_overhead: '系统开销',
+      cat_rules: 'Rules',
+      cat_skills: 'Skills',
+      cat_subagents: 'Subagents',
+      cat_legacy_workflows: '旧版工作流',
+      cat_workflows: '工作流',
+      cat_plugins: '插件',
+      cat_mcp_tools: 'MCP 工具',
+      logLoading: '正在读取日志…',
+      logReadFailed: '日志读取失败: {err}',
+      logEmptyFile: '(日志文件为空)',
+      logUpdatedAt: ' · 更新于 {t}',
+      logTailHint: ' · 仅显示末尾 32 KB',
+      logNone: '(暂无输出日志)',
+      execOutput: '执行输出',
+      refreshLog: '刷新日志',
+      promptLabel: '任务指令 (Prompt)',
+      cmdLabel: '执行命令',
+      copyPrompt: '复制指令',
+      copyCmd: '复制命令',
+      noPrompt: '(无指令内容)',
+      noCmd: '(无命令详情)',
+      metaStatus: '状态:',
+      metaType: '类型:',
+      metaStarted: '启动:',
+      tasksNone: '暂无',
+      tasksRunning: '{n} 运行中',
+      tasksNoRunning: '无运行中任务 (共 {n} 条)',
+      tasksEmpty: '当前会话尚无后台任务记录',
+      tasksHide: '收起历史任务',
+      tasksShowMore: '展开其余 {n} 条历史任务',
+      ckActive: '当前',
+      ckArchived: '已归档',
+      ckTip: '检查点 {num}: {text}',
+      convFolder: '会话目录',
+      costCalls: '{n} 次调用',
+      costTipRow: '{model}: {calls} 次调用 · {share}% · 输入 {inCost} / 缓存 {cacheCost} / 输出 {outCost}',
+      costTipNoPrice: '{model}: {calls} 次调用 · 暂无公开牌价',
+      costNoCalls: '暂无模型调用记录',
+      costListPrice: '公开牌价',
+      costTotal: '总计',
+      costMain: '主会话',
+      costSub: '子代理 ({n})',
+      costTotalTip: '总计 {total} (输入 {inCost} / 缓存 {cacheCost} / 输出 {outCost})',
+      costSaved: ' · 缓存节省 {saved}',
+      costMainTip: '仅主会话: {calls} 次调用 ({usd}, {pct}%) · 输入 {inCost} / 缓存 {cacheCost} / 输出 {outCost}',
+      costSubTip: '主会话: {mCalls} 次调用 ({mUsd}) · 子代理 ({sCount}): {sCalls} 次调用 ({sUsd}, {sPct}%)',
+      costNoPriceRow: '暂无公开牌价',
+      costNoPriceTitle: '所调用模型暂无公开 API 牌价',
+      costExcluded: '已排除 {n} 次无牌价调用',
+      costIncomplete: '部分子代理数据暂不可用',
+      modelCacheHit: ' · 缓存命中 {pct}%',
+      modelEfforts: ' · 思考强度: {items}',
+      effortTimes: '{k} {v}次',
+      modelCostTip: ' · 估算 {total} (输入 {inCost} / 缓存 {cacheCost} / 输出 {outCost})',
+      modelNoPriceTip: ' · 暂无公开牌价',
+      modelTip: '调用 {calls} 次 · 输入 {inTok}{hit} · 输出 {outTok} (思考 {thinkTok}){cost}{effort}',
+      errNoConv: '请打开一个对话以查看上下文状态。',
+      errNoDb: '当前对话尚无已保存数据，请先发送一条消息。',
+      errReadConv: '无法读取当前对话: {msg}',
+      errFetch: '暂时无法读取上下文状态: {msg}',
+      retryLater: '请稍后重试',
+    },
+    en: {
+      pageTitle: 'Antigravity Context Status',
+      loading: 'Loading context status…',
+      seg_system: 'System',
+      seg_user: 'User',
+      seg_agent: 'Agent',
+      seg_tools: 'Tools',
+      seg_custom: 'Custom',
+      seg_sysmsg: 'SysMsg',
+      st_running: 'Running',
+      st_done: 'Done',
+      st_error: 'Error',
+      st_cancelled: 'Cancelled',
+      st_unknown: 'Unknown',
+      st_scheduled: 'Scheduled',
+      ago_s: '{n}s ago',
+      ago_m: '{n}m ago',
+      ago_h: '{n}h ago',
+      ago_d: '{n}d ago',
+      copied: 'Copied',
+      copyFailed: 'Copy failed',
+      copyAsText: 'Copy as text',
+      copyTitle: 'Copy the report as plain text',
+      unknown: 'Unknown',
+      live: 'Live',
+      usedOnly: 'Used <strong>{used}</strong> tokens',
+      usedAndFree: 'Used <strong>{pct}%</strong> · Free <strong>{free}</strong> tokens',
+      budgetThreshold: 'Trim / compact threshold',
+      secTokenUsage: 'Token usage',
+      secCost: 'Estimated cost',
+      secModels: 'Models',
+      secTasks: 'Background tasks',
+      secCheckpoints: 'Checkpoints',
+      secKnowledge: 'Knowledge files',
+      secArtifacts: 'Artifact files',
+      cat_user: 'User messages',
+      cat_agent: 'Agent responses',
+      cat_tool: 'Tool calls',
+      cat_system_messages: 'System messages',
+      cat_system_prompt: 'System prompt',
+      cat_system_tools: 'System tools',
+      cat_system_overhead: 'System overhead',
+      cat_rules: 'Rules',
+      cat_skills: 'Skills',
+      cat_subagents: 'Subagents',
+      cat_legacy_workflows: 'Legacy workflows',
+      cat_workflows: 'Workflows',
+      cat_plugins: 'Plugins',
+      cat_mcp_tools: 'MCP tools',
+      logLoading: 'Loading log…',
+      logReadFailed: 'Failed to read log: {err}',
+      logEmptyFile: '(Log file is empty)',
+      logUpdatedAt: ' · Updated {t}',
+      logTailHint: ' · Last 32 KB only',
+      logNone: '(No output log yet)',
+      execOutput: 'Execution output',
+      refreshLog: 'Refresh log',
+      promptLabel: 'Prompt',
+      cmdLabel: 'Command',
+      copyPrompt: 'Copy prompt',
+      copyCmd: 'Copy command',
+      noPrompt: '(No prompt)',
+      noCmd: '(No command details)',
+      metaStatus: 'Status:',
+      metaType: 'Type:',
+      metaStarted: 'Started:',
+      tasksNone: 'None',
+      tasksRunning: '{n} running',
+      tasksNoRunning: 'No running tasks ({n} total)',
+      tasksEmpty: 'No background tasks in this conversation',
+      tasksHide: 'Hide finished tasks',
+      tasksShowMore: 'Show {n} more finished tasks',
+      ckActive: 'Active',
+      ckArchived: 'archived',
+      ckTip: 'Checkpoint {num}: {text}',
+      convFolder: 'conversation folder',
+      costCalls: '{n} calls',
+      costTipRow: '{model}: {calls} calls · {share}% · Input {inCost} / Cache {cacheCost} / Output {outCost}',
+      costTipNoPrice: '{model}: {calls} calls · No public list price',
+      costNoCalls: 'No model calls recorded',
+      costListPrice: 'List price',
+      costTotal: 'Total',
+      costMain: 'Main',
+      costSub: 'Subagents ({n})',
+      costTotalTip: 'Total {total} (Input {inCost} / Cache {cacheCost} / Output {outCost})',
+      costSaved: ' · Cache saved {saved}',
+      costMainTip: 'Main session only: {calls} calls ({usd}, {pct}%) · Input {inCost} / Cache {cacheCost} / Output {outCost}',
+      costSubTip: 'Main: {mCalls} calls ({mUsd}) · Subagents ({sCount}): {sCalls} calls ({sUsd}, {sPct}%)',
+      costNoPriceRow: 'No public list price',
+      costNoPriceTitle: 'No published API list price available for the called models',
+      costExcluded: 'Excluded {n} unpriced call(s)',
+      costIncomplete: 'Some subagent data was temporarily unavailable',
+      modelCacheHit: ' · Cache hit {pct}%',
+      modelEfforts: ' · Reasoning: {items}',
+      effortTimes: '{k} x{v}',
+      modelCostTip: ' · Est. {total} (Input {inCost} / Cache {cacheCost} / Output {outCost})',
+      modelNoPriceTip: ' · No public list price',
+      modelTip: '{calls} calls · Input {inTok}{hit} · Output {outTok} (Thinking {thinkTok}){cost}{effort}',
+      errNoConv: 'Open a conversation to see its status bar.',
+      errNoDb: 'This conversation has no saved data yet. Send a message first.',
+      errReadConv: 'Couldn\'t read this conversation: {msg}',
+      errFetch: 'Unable to load context status: {msg}',
+      retryLater: 'Please try again later',
+    },
+  };
+
+  function t(key, vars) {
+    let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        s = s.replaceAll(`{${k}}`, String(v));
+      }
+    }
+    return s;
+  }
+
+  document.title = t('pageTitle');
+  const initLoading = document.getElementById('init-loading');
+  if (initLoading) initLoading.textContent = t('loading');
 
   const BAR_SEGMENT_DEFS = [
-    { key: 'system', label: 'System', color: 'var(--c-system)' },
-    { key: 'user', label: 'User', color: 'var(--c-user)' },
-    { key: 'agent', label: 'Agent', color: 'var(--c-agent)' },
-    { key: 'tools', label: 'Tools', color: 'var(--c-tool)' },
-    { key: 'custom', label: 'Custom', color: 'var(--c-custom)' },
-    { key: 'sysmsg', label: 'SysMsg', color: 'var(--c-sysmsg)' },
+    { key: 'system', label: t('seg_system'), color: 'var(--c-system)' },
+    { key: 'user', label: t('seg_user'), color: 'var(--c-user)' },
+    { key: 'agent', label: t('seg_agent'), color: 'var(--c-agent)' },
+    { key: 'tools', label: t('seg_tools'), color: 'var(--c-tool)' },
+    { key: 'custom', label: t('seg_custom'), color: 'var(--c-custom)' },
+    { key: 'sysmsg', label: t('seg_sysmsg'), color: 'var(--c-sysmsg)' },
   ];
 
   const CONVERSATION = {
@@ -415,14 +644,13 @@
   const MODEL_COLORS = ['var(--c-agent)', 'var(--c-user)', 'var(--c-custom)', 'var(--c-tool)', 'var(--c-sysmsg)'];
 
   const STATUS_LABELS = {
-    running: '运行中',
-    done: '已完成',
-    error: '失败',
-    cancelled: '已取消',
-    unknown: '未知',
+    running: t('st_running'),
+    done: t('st_done'),
+    error: t('st_error'),
+    cancelled: t('st_cancelled'),
+    unknown: t('st_unknown'),
   };
 
-  const params = new URLSearchParams(location.search);
   const paramTheme = params.get('theme');
   if (paramTheme === 'dark' || paramTheme === 'light') {
     document.documentElement.setAttribute('data-theme', paramTheme);
@@ -498,10 +726,10 @@
   function fmtRelativeTime(epochSec) {
     if (!epochSec) return '-';
     const diff = Math.max(0, Math.floor(Date.now() / 1000) - epochSec);
-    if (diff < 60) return `${diff}s 前`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m 前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h 前`;
-    return `${Math.floor(diff / 86400)}d 前`;
+    if (diff < 60) return t('ago_s', { n: diff });
+    if (diff < 3600) return t('ago_m', { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t('ago_h', { n: Math.floor(diff / 3600) });
+    return t('ago_d', { n: Math.floor(diff / 86400) });
   }
 
   function fmtDateTime(epochSec) {
@@ -538,7 +766,7 @@
       }
     }
     if (btn) {
-      btn.textContent = copied ? '已复制' : '复制失败';
+      btn.textContent = copied ? t('copied') : t('copyFailed');
       setTimeout(() => { btn.textContent = idleLabel; }, 1500);
     }
   }
@@ -563,9 +791,9 @@
 
   function defaultReadoutHtml(r) {
     if (!r.limit_tokens) {
-      return `<span>已用 <strong>${fmtTok(r.used_tokens)}</strong> tokens</span>`;
+      return `<span>${t('usedOnly', { used: fmtTok(r.used_tokens) })}</span>`;
     }
-    return `<span>已用 <strong>${r.used_pct.toFixed(1)}%</strong> · 剩余 <strong>${fmtTok(r.free_tokens)}</strong> tokens</span>`;
+    return `<span>${t('usedAndFree', { pct: r.used_pct.toFixed(1), free: fmtTok(r.free_tokens) })}</span>`;
   }
 
   function contextBarHtml(r) {
@@ -585,7 +813,7 @@
       tickHtml = `<span class="ctx-budget-tick" id="ctx-budget-tick" `
         + `data-tokens="${r.request_budget_tokens}" data-pct="${budgetPct}" `
         + `style="left:${tickLeft}%" `
-        + `title="裁剪/压缩阈值: ${fmtTok(r.request_budget_tokens)} tokens (${budgetPct}%)"></span>`;
+        + `title="${esc(t('budgetThreshold'))}: ${fmtTok(r.request_budget_tokens)} tokens (${budgetPct}%)"></span>`;
     }
 
     return `
@@ -637,71 +865,71 @@
     if (tick) {
       tick.addEventListener('mouseenter', () => {
         readout.innerHTML = `<span class="dot-swatch" style="background:var(--fg)"></span>`
-          + `<strong>裁剪/压缩阈值</strong>`
+          + `<strong>${esc(t('budgetThreshold'))}</strong>`
           + `<span class="num">${fmtTok(Number(tick.dataset.tokens))} tokens (${tick.dataset.pct}%)</span>`;
       });
       tick.addEventListener('mouseleave', reset);
     }
   }
 
-  function taskCardHtml(t) {
-    const isExpanded = expandedTaskIds.has(t.step_idx);
-    const isSubagent = t.tool === 'invoke_subagent';
-    const statusLabel = (t.tool === 'schedule' && t.status === 'done')
-      ? '已调度'
-      : (STATUS_LABELS[t.status] || t.status);
-    const title = t.title || t.command || t.task_id || `Task #${t.step_idx}`;
+  function taskCardHtml(tItem) {
+    const isExpanded = expandedTaskIds.has(tItem.step_idx);
+    const isSubagent = tItem.tool === 'invoke_subagent';
+    const statusLabel = (tItem.tool === 'schedule' && tItem.status === 'done')
+      ? t('st_scheduled')
+      : (STATUS_LABELS[tItem.status] || tItem.status);
+    const title = tItem.title || tItem.command || tItem.task_id || `Task #${tItem.step_idx}`;
     const badges = [];
-    if (t.is_daemon) badges.push('<span class="tag daemon">Daemon</span>');
-    if (t.tool === 'schedule') badges.push('<span class="tag timer">Timer</span>');
+    if (tItem.is_daemon) badges.push('<span class="tag daemon">Daemon</span>');
+    if (tItem.tool === 'schedule') badges.push('<span class="tag timer">Timer</span>');
     if (isSubagent) badges.push('<span class="tag subagent">Subagent</span>');
 
     let detailHtml = '';
     if (isExpanded) {
       let logBlockHtml = '';
       if (!isSubagent) {
-        const logState = taskLogs.get(t.step_idx);
+        const logState = taskLogs.get(tItem.step_idx);
         let logText = '';
         let logHint = '';
         if (logState && logState.loading && !logState.data) {
-          logText = '正在读取日志…';
+          logText = t('logLoading');
         } else if (logState && logState.error) {
-          logText = t.output_preview || `日志读取失败: ${logState.error}`;
+          logText = tItem.output_preview || t('logReadFailed', { err: logState.error });
         } else if (logState && logState.data && logState.data.exists) {
-          logText = logState.data.content || '(日志文件为空)';
-          const mtimeSec = logState.data.mtimeMs ? Math.floor(logState.data.mtimeMs / 1000) : t.log_mtime;
-          const sizeVal = logState.data.size ?? t.log_size;
-          logHint = `${fmtBytes(sizeVal)}${mtimeSec ? ` · 更新于 ${fmtRelativeTime(mtimeSec)}` : ''}${logState.data.truncated ? ' · 仅显示末尾 32 KB' : ''}`;
+          logText = logState.data.content || t('logEmptyFile');
+          const mtimeSec = logState.data.mtimeMs ? Math.floor(logState.data.mtimeMs / 1000) : tItem.log_mtime;
+          const sizeVal = logState.data.size ?? tItem.log_size;
+          logHint = `${fmtBytes(sizeVal)}${mtimeSec ? t('logUpdatedAt', { t: fmtRelativeTime(mtimeSec) }) : ''}${logState.data.truncated ? t('logTailHint') : ''}`;
         } else {
-          logText = t.output_preview || '(暂无输出日志)';
-          if (t.has_log) logHint = `${fmtBytes(t.log_size)}`;
+          logText = tItem.output_preview || t('logNone');
+          if (tItem.has_log) logHint = `${fmtBytes(tItem.log_size)}`;
         }
         logBlockHtml = `
           <div>
             <div class="task-block-head">
-              <span>执行输出${logHint ? ` · ${esc(logHint)}` : ''}</span>
-              <button type="button" class="btn sm task-refresh-log" data-step="${t.step_idx}">刷新日志</button>
+              <span>${esc(t('execOutput'))}${logHint ? ` · ${esc(logHint)}` : ''}</span>
+              <button type="button" class="btn sm task-refresh-log" data-step="${tItem.step_idx}">${esc(t('refreshLog'))}</button>
             </div>
-            <pre class="code-box log-box" id="task-log-${t.step_idx}">${esc(logText)}</pre>
+            <pre class="code-box log-box" id="task-log-${tItem.step_idx}">${esc(logText)}</pre>
           </div>`;
       }
 
-      const cmdLabel = isSubagent ? '任务指令 (Prompt)' : '执行命令';
-      const copyLabel = isSubagent ? '复制指令' : '复制命令';
-      const cmdDisplay = t.command || (isSubagent ? '(无指令内容)' : '(无命令详情)');
-      const idDisplay = t.task_id ? (isSubagent ? t.task_id.slice(0, 8) : t.task_id.split(/[\\/]/).pop()) : '';
+      const cmdLabel = isSubagent ? t('promptLabel') : t('cmdLabel');
+      const copyLabel = isSubagent ? t('copyPrompt') : t('copyCmd');
+      const cmdDisplay = tItem.command || (isSubagent ? t('noPrompt') : t('noCmd'));
+      const idDisplay = tItem.task_id ? (isSubagent ? tItem.task_id.slice(0, 8) : tItem.task_id.split(/[\\/]/).pop()) : '';
       detailHtml = `
         <div class="task-detail">
           <div class="task-meta-grid">
-            <span class="task-meta-item">状态: <strong>${esc(statusLabel)}</strong></span>
-            ${isSubagent && t.subagent_type ? `<span class="task-meta-item">类型: <strong>${esc(t.subagent_type)}</strong></span>` : ''}
-            <span class="task-meta-item">启动: <strong>${esc(fmtDateTime(t.started_at))}</strong></span>
-            ${idDisplay ? `<span class="task-meta-item mono" title="${esc(t.task_id)}">ID: ${esc(idDisplay)}</span>` : ''}
+            <span class="task-meta-item">${esc(t('metaStatus'))} <strong>${esc(statusLabel)}</strong></span>
+            ${isSubagent && tItem.subagent_type ? `<span class="task-meta-item">${esc(t('metaType'))} <strong>${esc(tItem.subagent_type)}</strong></span>` : ''}
+            <span class="task-meta-item">${esc(t('metaStarted'))} <strong>${esc(fmtDateTime(tItem.started_at))}</strong></span>
+            ${idDisplay ? `<span class="task-meta-item mono" title="${esc(tItem.task_id)}">ID: ${esc(idDisplay)}</span>` : ''}
           </div>
           <div>
             <div class="task-block-head">
-              <span>${cmdLabel}</span>
-              <button type="button" class="btn sm task-copy-cmd" data-step="${t.step_idx}">${copyLabel}</button>
+              <span>${esc(cmdLabel)}</span>
+              <button type="button" class="btn sm task-copy-cmd" data-step="${tItem.step_idx}">${esc(copyLabel)}</button>
             </div>
             <pre class="code-box">${esc(cmdDisplay)}</pre>
           </div>
@@ -710,12 +938,12 @@
     }
 
     return `
-      <div class="task-card ${t.status === 'running' ? 'is-running' : ''} ${isExpanded ? 'is-expanded' : ''}" data-step="${t.step_idx}">
-        <button type="button" class="task-toggle" data-step="${t.step_idx}" aria-expanded="${isExpanded}">
-          <span class="status-dot ${esc(t.status)}" title="${esc(statusLabel)}"></span>
+      <div class="task-card ${tItem.status === 'running' ? 'is-running' : ''} ${isExpanded ? 'is-expanded' : ''}" data-step="${tItem.step_idx}">
+        <button type="button" class="task-toggle" data-step="${tItem.step_idx}" aria-expanded="${isExpanded}">
+          <span class="status-dot ${esc(tItem.status)}" title="${esc(statusLabel)}"></span>
           <span class="task-title" title="${esc(title)}">${esc(title)}</span>
           ${badges.join('')}
-          <span class="task-time num" title="${esc(fmtDateTime(t.started_at))}">${esc(fmtRelativeTime(t.started_at))}</span>
+          <span class="task-time num" title="${esc(fmtDateTime(tItem.started_at))}">${esc(fmtRelativeTime(tItem.started_at))}</span>
           <span class="chevron">▸</span>
         </button>
         ${detailHtml}
@@ -724,28 +952,28 @@
 
   function tasksSectionHtml(r) {
     const allTasks = Array.isArray(r.background_tasks) ? r.background_tasks : [];
-    const running = allTasks.filter((t) => t.status === 'running');
-    const finished = allTasks.filter((t) => t.status !== 'running');
+    const running = allTasks.filter((tItem) => tItem.status === 'running');
+    const finished = allTasks.filter((tItem) => tItem.status !== 'running');
 
-    let pillHtml = '<span class="status-pill">暂无</span>';
+    let pillHtml = `<span class="status-pill">${esc(t('tasksNone'))}</span>`;
     if (running.length > 0) {
-      pillHtml = `<span class="status-pill running"><span class="status-dot running"></span>${running.length} 运行中</span>`;
+      pillHtml = `<span class="status-pill running"><span class="status-dot running"></span>${esc(t('tasksRunning', { n: running.length }))}</span>`;
     } else if (allTasks.length > 0) {
-      pillHtml = `<span class="status-pill">无运行中任务 (共 ${allTasks.length} 条)</span>`;
+      pillHtml = `<span class="status-pill">${esc(t('tasksNoRunning', { n: allTasks.length }))}</span>`;
     }
 
-    let bodyHtml = '<div class="tasks-empty">当前会话尚无后台任务记录</div>';
+    let bodyHtml = `<div class="tasks-empty">${esc(t('tasksEmpty'))}</div>`;
     if (allTasks.length > 0) {
       const visibleFinished = showFinishedTasks ? finished : finished.slice(0, FINISHED_PREVIEW_LIMIT);
       const visibleTasks = [...running, ...visibleFinished];
       const moreCount = finished.length - visibleFinished.length;
       const moreBtn = finished.length > FINISHED_PREVIEW_LIMIT
-        ? `<div class="tasks-more"><button type="button" class="btn sm" id="toggle-finished-tasks">${showFinishedTasks ? '收起历史任务' : `展开其余 ${moreCount} 条历史任务`}</button></div>`
+        ? `<div class="tasks-more"><button type="button" class="btn sm" id="toggle-finished-tasks">${esc(showFinishedTasks ? t('tasksHide') : t('tasksShowMore', { n: moreCount }))}</button></div>`
         : '';
       bodyHtml = `<div class="task-list">${visibleTasks.map(taskCardHtml).join('')}</div>${moreBtn}`;
     }
 
-    return `<section id="tasks-section"><h2>后台任务 <span class="hint">${pillHtml}</span></h2>${bodyHtml}</section>`;
+    return `<section id="tasks-section"><h2>${esc(t('secTasks'))} <span class="hint">${pillHtml}</span></h2>${bodyHtml}</section>`;
   }
 
   function bindTasksEvents() {
@@ -761,7 +989,7 @@
         } else {
           expandedTaskIds.add(stepIdx);
           renderTasksOnly();
-          const task = (report.background_tasks || []).find((t) => t.step_idx === stepIdx);
+          const task = (report.background_tasks || []).find((tItem) => tItem.step_idx === stepIdx);
           if (task && task.tool !== 'invoke_subagent') {
             fetchTaskLog(stepIdx, false);
           }
@@ -773,8 +1001,8 @@
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const stepIdx = Number(btn.dataset.step);
-        const task = (report.background_tasks || []).find((t) => t.step_idx === stepIdx);
-        if (task) copyText(task.command || '', btn, task.tool === 'invoke_subagent' ? '复制指令' : '复制命令');
+        const task = (report.background_tasks || []).find((tItem) => tItem.step_idx === stepIdx);
+        if (task) copyText(task.command || '', btn, task.tool === 'invoke_subagent' ? t('copyPrompt') : t('copyCmd'));
       });
     });
 
@@ -874,10 +1102,15 @@
     return 'custom';
   }
 
+  function categoryName(c) {
+    const k = `cat_${c.key}`;
+    return (I18N[LANG] && I18N[LANG][k]) ? I18N[LANG][k] : c.name;
+  }
+
   function categoryRow(c) {
     const color = CONVERSATION[c.key] || (SYSTEM.has(c.key) ? 'var(--c-system)' : 'var(--c-custom)');
     const shape = CONVERSATION[c.key] ? '' : ' sq';
-    return `<div class="row" data-group="${categoryGroup(c.key)}"><span class="mark${shape}" style="background:${color}"></span><span>${esc(c.name)}</span>`
+    return `<div class="row" data-group="${categoryGroup(c.key)}"><span class="mark${shape}" style="background:${color}"></span><span>${esc(categoryName(c))}</span>`
       + `<span class="tok num">${fmtTok(num(c.tokens))}</span><span class="p num">${num(c.pct).toFixed(1)}%</span></div>`;
   }
 
@@ -961,7 +1194,7 @@
     const conv = r.categories.filter((c) => CONVERSATION[c.key]);
     const rest = r.categories.filter((c) => !CONVERSATION[c.key]);
     const note = r.heading === 'Token usage by category' ? '' : `<p class="note">${esc(r.heading)}</p>`;
-    return `<section id="token-usage-section"><h2>Token usage</h2>${contextBarHtml(r)}${note}
+    return `<section id="token-usage-section"><h2>${esc(t('secTokenUsage'))}</h2>${contextBarHtml(r)}${note}
       ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}
       ${conv.length ? `<div class="group">${conv.map(categoryRow).join('')}</div>` : ''}</section>`;
   }
@@ -978,7 +1211,7 @@
     const activeLabel = `#${num(activeItem.number)} · ${activeItem.text}`;
     const activeSpan = activeItem.end > activeItem.start ? `steps ${num(activeItem.start)}–${num(activeItem.end)}` : '';
     const activeTime = fmtShortDateTime(activeItem.created_at);
-    const activeTip = [`Checkpoint ${num(activeItem.number)}: ${activeItem.text}`, activeSpan, activeTime].filter(Boolean).join(' · ');
+    const activeTip = [t('ckTip', { num: num(activeItem.number), text: activeItem.text }), activeSpan, activeTime].filter(Boolean).join(' · ');
 
     let bodyHtml;
     if (olderItems.length > 0) {
@@ -986,7 +1219,7 @@
         const label = `#${num(it.number)} · ${it.text}`;
         const span = it.end > it.start ? `steps ${num(it.start)}–${num(it.end)}` : '';
         const when = fmtShortDateTime(it.created_at) || span || '-';
-        const tip = [`Checkpoint ${num(it.number)}: ${it.text}`, span, 'archived'].filter(Boolean).join(' · ');
+        const tip = [t('ckTip', { num: num(it.number), text: it.text }), span, t('ckArchived')].filter(Boolean).join(' · ');
         return `<div class="row" title="${esc(tip)}">`
           + `<span class="mark" style="background:var(--empty)"></span>`
           + `<span class="dim">${esc(label)}</span>`
@@ -996,17 +1229,17 @@
       bodyHtml = `<button type="button" class="cost-toggle row" id="ck-toggle" aria-expanded="${ckExpanded ? 'true' : 'false'}" aria-controls="ck-history-list" title="${esc(activeTip)}">`
         + `<span class="mark" style="background:var(--c-running)"></span>`
         + `<span class="cost-label"><span>${esc(activeLabel)}</span><span class="cost-chevron" aria-hidden="true">▸</span></span>`
-        + `<span class="tok num span-end ck-active-tag">Active</span>`
+        + `<span class="tok num span-end ck-active-tag">${esc(t('ckActive'))}</span>`
         + `</button>`
         + `<div class="cost-models" id="ck-history-list"${ckExpanded ? '' : ' hidden'}>${historyRows}</div>`;
     } else {
       bodyHtml = `<div class="row" title="${esc(activeTip)}">`
         + `<span class="mark" style="background:var(--c-running)"></span>`
         + `<span>${esc(activeLabel)}</span>`
-        + `<span class="tok num span-end ck-active-tag">Active</span>`
+        + `<span class="tok num span-end ck-active-tag">${esc(t('ckActive'))}</span>`
         + `</div>`;
     }
-    return `<section id="checkpoints-section"><h2>Checkpoints</h2><div class="group">${bodyHtml}</div></section>`;
+    return `<section id="checkpoints-section"><h2>${esc(t('secCheckpoints'))}</h2><div class="group">${bodyHtml}</div></section>`;
   }
 
   function splitPath(path) {
@@ -1017,7 +1250,7 @@
     let dir = i > 0 ? trimmed.slice(0, i) : '';
     if (conversationId) {
       const escCid = conversationId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      dir = dir.replace(new RegExp(`^.*/brain/${escCid}(?=/|$)`, 'i'), 'conversation folder');
+      dir = dir.replace(new RegExp(`^.*/brain/${escCid}(?=/|$)`, 'i'), t('convFolder'));
     }
     return { name, dir };
   }
@@ -1040,8 +1273,8 @@
       const mCost = mHasUsd ? fmtUsd(m.estimated_cost_usd) : '-';
       const mShare = num(m.share_pct).toFixed(1);
       const mTip = mHasUsd
-        ? `${m.model}: ${num(m.calls)} calls · ${mShare}% · Input ${fmtUsdExact(m.input_cost_usd)} / Cache ${fmtUsdExact(m.cache_read_cost_usd)} / Output ${fmtUsdExact(m.output_cost_usd)}`
-        : `${m.model}: ${num(m.calls)} calls · No public list price`;
+        ? t('costTipRow', { model: m.model, calls: num(m.calls), share: mShare, inCost: fmtUsdExact(m.input_cost_usd), cacheCost: fmtUsdExact(m.cache_read_cost_usd), outCost: fmtUsdExact(m.output_cost_usd) })
+        : t('costTipNoPrice', { model: m.model, calls: num(m.calls) });
       return `<div class="row" title="${esc(mTip)}">`
         + `<span class="mark" style="background:${mColor}"></span>`
         + `<span>${esc(m.model)}</span>`
@@ -1070,8 +1303,8 @@
   function costSectionHtml(r) {
     const cs = r.cost_stats;
     if (!cs || !cs.total_calls) {
-      return '<section id="cost-section"><h2>Estimated cost <span class="hint">List price</span></h2>'
-        + '<div class="tasks-empty">No model calls recorded</div></section>';
+      return `<section id="cost-section"><h2>${esc(t('secCost'))} <span class="hint">${esc(t('costListPrice'))}</span></h2>`
+        + `<div class="tasks-empty">${esc(t('costNoCalls'))}</div></section>`;
     }
     const mb = cs.main_breakdown || {};
     const sb = cs.subagent_breakdown || {};
@@ -1084,14 +1317,6 @@
       ? cs.unpriced_models.join(', ')
       : '';
 
-    const hintParts = [`${num(cs.total_calls)} calls`];
-    if (hasPriced && savedUsd >= 0.005) {
-      hintParts.push(`saved ~${fmtUsd(savedUsd)}`);
-    } else {
-      hintParts.push('list price');
-    }
-    const headTip = 'Estimated API equivalent from published Google Gemini / Anthropic Claude list prices (not subscription billing)';
-
     let bodyHtml = '';
     if (hasPriced) {
       const inUsd = num(mb.input_usd) + num(sb.input_usd);
@@ -1101,15 +1326,15 @@
       const byModel = Array.isArray(cs.by_model) ? cs.by_model : [];
       const subByModel = Array.isArray(cs.subagent_by_model) ? cs.subagent_by_model : [];
 
-      const totalTip = `Total ${fmtUsdExact(totalUsd)} (Input ${fmtUsdExact(inUsd)} / Cache ${fmtUsdExact(cacheUsd)} / Output ${fmtUsdExact(outUsd)})`
-        + (savedUsd > 0 ? ` · Cache saved ${fmtUsdExact(savedUsd)}` : '');
+      const totalTip = t('costTotalTip', { total: fmtUsdExact(totalUsd), inCost: fmtUsdExact(inUsd), cacheCost: fmtUsdExact(cacheUsd), outCost: fmtUsdExact(outUsd) })
+        + (savedUsd > 0 ? t('costSaved', { saved: fmtUsdExact(savedUsd) }) : '');
 
       bodyHtml = costDisclosureHtml({
         toggleId: 'cost-total-toggle',
         listId: 'cost-total-models',
         markClass: '',
         markBg: 'var(--c-custom)',
-        label: 'Total',
+        label: t('costTotal'),
         amountText: `~${fmtUsd(totalUsd)}`,
         amountClass: 'strong',
         tip: totalTip,
@@ -1122,19 +1347,19 @@
         const subPct = totalUsd > 0 ? (subUsd / totalUsd * 100) : 0;
         const mainUsd = num(cs.main_usd);
         const mainPct = totalUsd > 0 ? (mainUsd / totalUsd * 100) : 0;
-        const mainTip = `Main session only: ${num(mb.calls)} calls (${fmtUsdExact(mainUsd)}, ${mainPct.toFixed(1)}%) · Input ${fmtUsdExact(mb.input_usd)} / Cache ${fmtUsdExact(mb.cache_read_usd)} / Output ${fmtUsdExact(mb.output_usd)}`;
+        const mainTip = t('costMainTip', { calls: num(mb.calls), usd: fmtUsdExact(mainUsd), pct: mainPct.toFixed(1), inCost: fmtUsdExact(mb.input_usd), cacheCost: fmtUsdExact(mb.cache_read_usd), outCost: fmtUsdExact(mb.output_usd) });
         bodyHtml += `<div class="row" title="${esc(mainTip)}">`
           + `<span class="mark sq" style="background:var(--c-user)"></span>`
-          + `<span class="dim">Main</span>`
+          + `<span class="dim">${esc(t('costMain'))}</span>`
           + `<span class="tok num span-end dim">${esc(fmtUsd(mainUsd))}</span>`
           + `</div>`;
-        const subTip = `Main: ${num(mb.calls)} calls (${fmtUsdExact(mainUsd)}) · Subagents (${subCount}): ${subCalls} calls (${fmtUsdExact(subUsd)}, ${subPct.toFixed(1)}%)`;
+        const subTip = t('costSubTip', { mCalls: num(mb.calls), mUsd: fmtUsdExact(mainUsd), sCount: subCount, sCalls: subCalls, sUsd: fmtUsdExact(subUsd), sPct: subPct.toFixed(1) });
         bodyHtml += costDisclosureHtml({
           toggleId: 'cost-sub-toggle',
           listId: 'cost-sub-models',
           markClass: ' sq',
           markBg: 'var(--c-system)',
-          label: `Subagents (${subCount})`,
+          label: t('costSub', { n: subCount }),
           amountText: fmtUsd(subUsd),
           amountClass: 'dim',
           tip: subTip,
@@ -1144,26 +1369,26 @@
       }
       bodyHtml = `<div class="group">${bodyHtml}</div>`;
     } else {
-      bodyHtml = `<div class="group"><div class="row" title="No published API list price available for the called models">`
+      bodyHtml = `<div class="group"><div class="row" title="${esc(t('costNoPriceTitle'))}">`
         + `<span class="mark free"></span>`
-        + `<span class="dim">No public list price${unpricedNames ? ` (${esc(unpricedNames)})` : ''}</span>`
+        + `<span class="dim">${esc(t('costNoPriceRow'))}${unpricedNames ? ` (${esc(unpricedNames)})` : ''}</span>`
         + `<span class="tok num dim span-end">-</span>`
         + `</div></div>`;
     }
 
     const warnParts = [];
     if (hasPriced && unpriced > 0) {
-      warnParts.push(`Excluded ${unpriced} unpriced call(s)${unpricedNames ? ` (${esc(unpricedNames)})` : ''}`);
+      warnParts.push(`${t('costExcluded', { n: unpriced })}${unpricedNames ? ` (${esc(unpricedNames)})` : ''}`);
     }
     if (cs.incomplete) {
-      warnParts.push('Some subagent data was temporarily unavailable');
+      warnParts.push(t('costIncomplete'));
     }
     const warnHtml = warnParts.length
       ? `<p class="note cost-warn"><span aria-hidden="true">⚠</span> ${warnParts.join(' · ')}</p>`
       : '';
 
     return `<section id="cost-section">`
-      + `<h2>Estimated cost</h2>`
+      + `<h2>${esc(t('secCost'))}</h2>`
       + `${bodyHtml}${warnHtml}`
       + `</section>`;
   }
@@ -1181,16 +1406,16 @@
       const color = MODEL_COLORS[i % MODEL_COLORS.length];
       const calls = num(m.calls);
       const sharePct = num(m.share_pct);
-      const hitStr = typeof m.cache_hit_rate === 'number' ? ` · 缓存命中 ${m.cache_hit_rate.toFixed(1)}%` : '';
+      const hitStr = typeof m.cache_hit_rate === 'number' ? t('modelCacheHit', { pct: m.cache_hit_rate.toFixed(1) }) : '';
       const effortEntries = m.efforts && typeof m.efforts === 'object' ? Object.entries(m.efforts) : [];
       const effortStr = effortEntries.length
-        ? ` · 思考强度: ${effortEntries.map(([k, v]) => `${k} ${num(v)}次`).join(', ')}`
+        ? t('modelEfforts', { items: effortEntries.map(([k, v]) => t('effortTimes', { k, v: num(v) })).join(', ') })
         : '';
       const hasModelUsd = typeof m.estimated_cost_usd === 'number';
       const costTip = hasModelUsd
-        ? ` · 估算 ${fmtUsdExact(m.estimated_cost_usd)} (输入 ${fmtUsdExact(m.input_cost_usd)} / 缓存 ${fmtUsdExact(m.cache_read_cost_usd)} / 输出 ${fmtUsdExact(m.output_cost_usd)})`
-        : ' · 暂无公开牌价';
-      const tip = `调用 ${calls} 次 · 输入 ${fmtTok(num(m.total_input_tokens))}${hitStr} · 输出 ${fmtTok(num(m.output_tokens))} (思考 ${fmtTok(num(m.thinking_tokens))})${costTip}${effortStr}`;
+        ? t('modelCostTip', { total: fmtUsdExact(m.estimated_cost_usd), inCost: fmtUsdExact(m.input_cost_usd), cacheCost: fmtUsdExact(m.cache_read_cost_usd), outCost: fmtUsdExact(m.output_cost_usd) })
+        : t('modelNoPriceTip');
+      const tip = t('modelTip', { calls, inTok: fmtTok(num(m.total_input_tokens)), hit: hitStr, outTok: fmtTok(num(m.output_tokens)), thinkTok: fmtTok(num(m.thinking_tokens)), cost: costTip, effort: effortStr });
       return `<div class="row" title="${esc(tip)}">`
         + `<span class="mark" style="background:${color}"></span>`
         + `<span class="model-row-name">${esc(m.model)}</span>`
@@ -1198,7 +1423,7 @@
         + `<span class="p num">${sharePct.toFixed(1)}%</span>`
         + `</div>`;
     }).join('');
-    return `<section id="models-section"><h2>Models</h2>`
+    return `<section id="models-section"><h2>${esc(t('secModels'))}</h2>`
       + `<div class="models-bar">${barSegs}</div>`
       + `<div class="group">${rows}</div></section>`;
   }
@@ -1209,12 +1434,12 @@
     const used = num(r.used_tokens);
     main.innerHTML = `
       <div class="top">
-        <div class="model"><span class="live on" title="Live"></span>${esc(r.model)}</div>
-        <button type="button" class="btn" id="copy" title="Copy the report as the CLI prints it">Copy as text</button>
+        <div class="model"><span class="live on" title="${esc(t('live'))}"></span>${esc(r.model)}</div>
+        <button type="button" class="btn" id="copy" title="${esc(t('copyTitle'))}">${esc(t('copyAsText'))}</button>
       </div>
       <div class="usage">
         <span class="big num">${fmtTok(used)}</span>
-        <span class="of">/ ${limit ? fmtTok(limit) : 'Unknown'} tokens</span>
+        <span class="of">/ ${limit ? fmtTok(limit) : esc(t('unknown'))} tokens</span>
         ${limit ? `<span class="pct num">${num(r.used_pct).toFixed(1)}%</span>` : ''}
       </div>
       ${categories(r)}
@@ -1222,11 +1447,11 @@
       ${modelsSectionHtml(r)}
       ${tasksSectionHtml(r)}
       ${checkpoints(r)}
-      ${files('Knowledge files', '/rules', r.knowledge_files)}
-      ${files('Artifact files', '/artifact', r.artifact_files)}`;
+      ${files(t('secKnowledge'), '/rules', r.knowledge_files)}
+      ${files(t('secArtifacts'), '/artifact', r.artifact_files)}`;
 
     document.getElementById('copy').addEventListener('click', (e) => {
-      if (report) copyText(report.text, e.currentTarget, 'Copy as text');
+      if (report) copyText(report.text, e.currentTarget, t('copyAsText'));
     });
     const bindDisclosure = (btnId, listId, getOpen, setOpen) => {
       const btn = document.getElementById(btnId);
@@ -1286,18 +1511,18 @@
         }
       }
       if (seq !== reportSeq) return;
-      if (data.error === 'no-conversation') return showMessage('Open a conversation to see its status bar.');
-      if (data.error === 'no-database') return showMessage('This conversation has no saved data yet. Send a message first.');
-      if (data.error) return showMessage(`Couldn't read this conversation: ${data.message || data.error}`);
+      if (data.error === 'no-conversation') return showMessage(t('errNoConv'));
+      if (data.error === 'no-database') return showMessage(t('errNoDb'));
+      if (data.error) return showMessage(t('errReadConv', { msg: data.message || data.error }));
 
       const tasks = Array.isArray(data.background_tasks) ? data.background_tasks : [];
-      for (const t of tasks) {
-        if (prevTaskStatuses.get(t.step_idx) === 'running' && t.status !== 'running') {
-          pendingFinalLogAt.set(t.step_idx, seq);
-        } else if (t.status === 'running') {
-          pendingFinalLogAt.delete(t.step_idx);
+      for (const tItem of tasks) {
+        if (prevTaskStatuses.get(tItem.step_idx) === 'running' && tItem.status !== 'running') {
+          pendingFinalLogAt.set(tItem.step_idx, seq);
+        } else if (tItem.status === 'running') {
+          pendingFinalLogAt.delete(tItem.step_idx);
         }
-        prevTaskStatuses.set(t.step_idx, t.status);
+        prevTaskStatuses.set(tItem.step_idx, tItem.status);
       }
 
       const json = JSON.stringify(data);
@@ -1313,7 +1538,7 @@
       if (seq !== reportSeq) return;
       setLiveOnline(false);
       if (!report) {
-        showMessage(`暂时无法读取上下文状态: ${err?.message || '请稍后重试'}`);
+        showMessage(t('errFetch', { msg: err?.message || t('retryLater') }));
       }
     }
   }

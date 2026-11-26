@@ -559,12 +559,109 @@
 </head>
 <body>
   <div class="wrap" id="app">
-    <div class="empty">正在读取本轮 RUN 遥测数据…</div>
+    <div class="empty" id="init-loading">Loading…</div>
   </div>
 
   <script>
     const $app = document.getElementById('app');
-    let activeTab = 'session'; // 'session' | 'daily'
+    const urlParams = new URLSearchParams(window.location.search);
+    const rawLang = urlParams.get('lang') || (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+    const LANG = /^zh\b/i.test(rawLang) ? 'zh' : 'en';
+    document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+
+    const I18N = {
+      zh: {
+        loading: '正在读取本轮 RUN 遥测数据…',
+        navSession: '会话',
+        navDaily: '每天',
+        navContext: '上下文',
+        avgLatency: '平均单步耗时 (≈TTFT+Gen)',
+        effectiveSpeed: '有效输出速率',
+        estCost: '估算费用',
+        cacheHitRate: '缓存命中率',
+        tokenUsageTitle: 'Token 用量明细',
+        tokIn: '输入',
+        tokOut: '输出',
+        tokCache: '缓存读取',
+        tokTotal: '总计',
+        cacheMiss: '未命中缓存',
+        cacheWarn: '低命中 · {pct}%',
+        cacheHit: '命中 {pct}%',
+        runFallback: '第 {n} 轮',
+        stepsCount: '{n} 步',
+        avgPrefix: '均值 {lat}',
+        noCalls: '当前对话暂无模型调用记录。',
+        optAll: '全部 ({runs} 轮{sub})',
+        optAllSub: ' + {subs} 子代理',
+        optMain: '仅主会话 ({runs} 轮)',
+        optSub: '仅子代理 ({subs})',
+        subagentTag: '子代理',
+        noSubagents: '当前会话暂无 Subagent 或 Swarm 记录。',
+        noTiming: '此轮暂无 Hook 毫秒计时（可能发生在插件启用前，或正在首步等待中）。',
+        running: '运行中',
+        done: '已完成',
+        noDailyCalls: '{date} 暂无模型调用记录。',
+        modelsTitle: '模型分布 ({n})',
+        dailySummary: '{sess} 会话 · {steps} 步',
+        modelRowSummary: '{steps} 步 · {sess} 会话',
+        prevDay: '前一天',
+        nextDay: '后一天',
+        today: '今天',
+      },
+      en: {
+        loading: 'Loading run telemetry…',
+        navSession: 'Session',
+        navDaily: 'Daily',
+        navContext: 'Context',
+        avgLatency: 'Avg Step Latency (≈TTFT+Gen)',
+        effectiveSpeed: 'Effective Speed',
+        estCost: 'Est. Cost',
+        cacheHitRate: 'Cache Hit Rate',
+        tokenUsageTitle: 'Token Usage (4 Items)',
+        tokIn: 'Input',
+        tokOut: 'Output',
+        tokCache: 'Cache Read',
+        tokTotal: 'Total',
+        cacheMiss: 'Cache Miss',
+        cacheWarn: 'Cache Miss · {pct}%',
+        cacheHit: 'Hit {pct}%',
+        runFallback: 'Run #{n}',
+        stepsCount: '{n} steps',
+        avgPrefix: 'Avg {lat}',
+        noCalls: 'No model calls recorded in this conversation.',
+        optAll: 'All ({runs} runs{sub})',
+        optAllSub: ' + {subs} subagents',
+        optMain: 'Main Only ({runs} runs)',
+        optSub: 'Subagent Only ({subs})',
+        subagentTag: 'Subagent',
+        noSubagents: 'No Subagent or Swarm runs in this conversation.',
+        noTiming: 'No Hook timing data for this run yet (may have occurred before plugin was enabled, or awaiting first step).',
+        running: 'Running',
+        done: 'Done',
+        noDailyCalls: 'No model calls recorded on {date}.',
+        modelsTitle: 'Models ({n})',
+        dailySummary: '{sess} sessions · {steps} steps',
+        modelRowSummary: '{steps} steps · {sess} sess',
+        prevDay: 'Previous day',
+        nextDay: 'Next day',
+        today: 'Today',
+      },
+    };
+
+    function t(key, vars) {
+      let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.en[key] ?? key;
+      if (vars) {
+        for (const [k, v] of Object.entries(vars)) {
+          s = s.replaceAll(`{${k}}`, String(v));
+        }
+      }
+      return s;
+    }
+
+    const initEl = document.getElementById('init-loading');
+    if (initEl) initEl.textContent = t('loading');
+
+    let activeTab = 'session'; // 'session' | 'daily' | 'context'
     let selectionMode = 'all'; // 'all' | 'main' | 'subagents'
     let lastSessionData = null;
     const cardToggleState = new Map();
@@ -664,9 +761,9 @@
     function renderNavBarHtml() {
       return `
         <div class="nav-tabs" role="tablist">
-          <button type="button" class="nav-tab ${activeTab === 'session' ? 'active' : ''}" data-tab="session">Session</button>
-          <button type="button" class="nav-tab ${activeTab === 'daily' ? 'active' : ''}" data-tab="daily">Daily</button>
-          <button type="button" class="nav-tab ${activeTab === 'context' ? 'active' : ''}" data-tab="context">Context</button>
+          <button type="button" class="nav-tab ${activeTab === 'session' ? 'active' : ''}" data-tab="session">${escapeHtml(t('navSession'))}</button>
+          <button type="button" class="nav-tab ${activeTab === 'daily' ? 'active' : ''}" data-tab="daily">${escapeHtml(t('navDaily'))}</button>
+          <button type="button" class="nav-tab ${activeTab === 'context' ? 'active' : ''}" data-tab="context">${escapeHtml(t('navContext'))}</button>
         </div>
       `;
     }
@@ -687,6 +784,7 @@
       setContextLayout(true);
       const sp = new URLSearchParams(window.location.search);
       sp.set('theme', detectIsDark() ? 'dark' : 'light');
+      sp.set('lang', LANG);
       $app.innerHTML = `
         ${renderNavBarHtml()}
         <iframe id="ctx-frame" class="ctx-frame" src="/context.html?${escapeHtml(sp.toString())}"></iframe>
@@ -739,25 +837,25 @@
       return `
         <div class="grid-2">
           <div class="card">
-            <div class="kpi-label">Avg Step Latency (≈TTFT+Gen)</div>
+            <div class="kpi-label">${escapeHtml(t('avgLatency'))}</div>
             <div class="kpi-value">${fmtMs(m.avgLatencyMs)}</div>
           </div>
           <div class="card">
-            <div class="kpi-label">Effective Speed</div>
+            <div class="kpi-label">${escapeHtml(t('effectiveSpeed'))}</div>
             <div class="kpi-value">${m.effectiveTps !== null && m.effectiveTps !== undefined ? `${m.effectiveTps}<span class="kpi-unit">tok/s</span>` : '—'}</div>
           </div>
           <div class="card">
-            <div class="kpi-label">Est. Cost</div>
+            <div class="kpi-label">${escapeHtml(t('estCost'))}</div>
             <div class="kpi-value">${fmtCost(m.costUsd)}</div>
           </div>
           <div class="card">
-            <div class="kpi-label">Cache Hit Rate</div>
+            <div class="kpi-label">${escapeHtml(t('cacheHitRate'))}</div>
             <div class="kpi-value">${m.cacheHitRate ?? 0}<span class="kpi-unit">%</span></div>
           </div>
         </div>
 
         <div class="card">
-          <div class="section-title">Token Usage (4 Items)</div>
+          <div class="section-title">${escapeHtml(t('tokenUsageTitle'))}</div>
           <div class="bar">
             <div class="bar-seg bar-in" style="width:${pIn}%"></div>
             <div class="bar-seg bar-out" style="width:${pOut}%"></div>
@@ -765,19 +863,19 @@
           </div>
           <div class="token-grid">
             <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-in)"></span>Input</span>
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-in)"></span>${escapeHtml(t('tokIn'))}</span>
               <span class="token-num">${fmtNum(m.inputTokens)}</span>
             </div>
             <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-out)"></span>Output</span>
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-out)"></span>${escapeHtml(t('tokOut'))}</span>
               <span class="token-num">${fmtNum(m.outputTokens)}</span>
             </div>
             <div class="token-item">
-              <span class="token-name"><span class="swatch" style="background:var(--rt-c-cache)"></span>Cache Read</span>
+              <span class="token-name"><span class="swatch" style="background:var(--rt-c-cache)"></span>${escapeHtml(t('tokCache'))}</span>
               <span class="token-num">${fmtNum(m.cacheReadTokens)}</span>
             </div>
             <div class="token-item">
-              <span class="token-name">Total</span>
+              <span class="token-name">${escapeHtml(t('tokTotal'))}</span>
               <span class="token-num">${fmtNum(m.totalTokens)}</span>
             </div>
           </div>
@@ -792,19 +890,19 @@
         const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
         const tps = s.tps !== null ? `${s.tps} t/s` : '—';
         const tok = [
-          tokChip('in', 'Input', s.inputTokens),
-          tokChip('out', 'Output', s.outputTokens),
-          tokChip('cache', 'Cache Read', s.cacheReadTokens),
+          tokChip('in', t('tokIn'), s.inputTokens),
+          tokChip('out', t('tokOut'), s.outputTokens),
+          tokChip('cache', t('tokCache'), s.cacheReadTokens),
         ].join('');
         const cacheDenom = s.inputTokens + s.cacheReadTokens;
         const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
         const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
         const isPartialMiss = !isFullMiss && hitPct < 50 && s.inputTokens > 0;
         const pillHtml = isFullMiss
-          ? `<span class="cache-pill miss">Cache Miss</span>`
+          ? `<span class="cache-pill miss">${escapeHtml(t('cacheMiss'))}</span>`
           : isPartialMiss
-            ? `<span class="cache-pill warn">Cache Miss · ${hitPct}%</span>`
-            : `<span class="cache-pill hit">Hit ${hitPct}%</span>`;
+            ? `<span class="cache-pill warn">${escapeHtml(t('cacheWarn', { pct: hitPct }))}</span>`
+            : `<span class="cache-pill hit">${escapeHtml(t('cacheHit', { pct: hitPct }))}</span>`;
         return `
           <div class="step-row">
             <div class="step-top">
@@ -825,14 +923,14 @@
         `;
       }).join('') : '';
 
-      const title = r.promptPreview || `Run #${r.runIndex}`;
+      const title = r.promptPreview || t('runFallback', { n: r.runIndex });
       const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
       const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
       const runTok = [
-        tokChip('in', 'Input', r.inputTokens),
-        tokChip('out', 'Output', r.outputTokens),
-        tokChip('cache', 'Cache Read', r.cacheReadTokens),
-        tokChip('total', 'Total', r.totalTokens),
+        tokChip('in', t('tokIn'), r.inputTokens),
+        tokChip('out', t('tokOut'), r.outputTokens),
+        tokChip('cache', t('tokCache'), r.cacheReadTokens),
+        tokChip('total', t('tokTotal'), r.totalTokens),
       ].join('');
       const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
 
@@ -846,11 +944,11 @@
                 ${badgeHtml}
                 <div class="run-block-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
               </div>
-              <span class="run-block-idx">${r.stepCount} steps ${caret}</span>
+              <span class="run-block-idx">${escapeHtml(t('stepsCount', { n: r.stepCount }))} ${caret}</span>
             </div>
             <div class="run-block-summary">
               <div class="run-block-perf">
-                <span class="step-lat">Avg ${avgLat}</span>
+                <span class="step-lat">${escapeHtml(t('avgPrefix', { lat: avgLat }))}</span>
                 <span class="step-tps">${avgTps}</span>
               </div>
               <span class="run-block-tok">${runTok}</span>
@@ -864,7 +962,7 @@
     function render(data) {
       lastSessionData = data;
       if (!data || !data.found || !data.runs || data.runs.length === 0) {
-        $app.innerHTML = `${renderNavBarHtml()}<div class="empty">当前对话暂无模型调用记录。</div>`;
+        $app.innerHTML = `${renderNavBarHtml()}<div class="empty">${escapeHtml(t('noCalls'))}</div>`;
         bindNavBar();
         return;
       }
@@ -883,14 +981,15 @@
         run = (hasChildren && data.combinedSummary) ? data.combinedSummary : (data.mainSummary || latestRun);
       }
 
+      const subOpt = hasChildren ? t('optAllSub', { subs: children.length }) : '';
       const optionsHtml = [
-        `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>All (${runs.length} runs${hasChildren ? ` + ${children.length} subagents` : ''})</option>`,
-        `<option value="main" ${selectionMode === 'main' ? 'selected' : ''}>Main Only (${runs.length} runs)</option>`,
-        `<option value="subagents" ${selectionMode === 'subagents' ? 'selected' : ''}>Subagent Only (${children.length})</option>`,
+        `<option value="all" ${selectionMode === 'all' ? 'selected' : ''}>${escapeHtml(t('optAll', { runs: runs.length, sub: subOpt }))}</option>`,
+        `<option value="main" ${selectionMode === 'main' ? 'selected' : ''}>${escapeHtml(t('optMain', { runs: runs.length }))}</option>`,
+        `<option value="subagents" ${selectionMode === 'subagents' ? 'selected' : ''}>${escapeHtml(t('optSub', { subs: children.length }))}</option>`,
       ].join('');
 
       const renderChildCard = (c, defaultExpanded) => {
-        const tag = `${c.kind === 'swarm' ? 'Swarm' : 'Subagent'} · ${c.label}`;
+        const tag = `${c.kind === 'swarm' ? 'Swarm' : t('subagentTag')} · ${c.label}`;
         const allChildSteps = c.runs.flatMap(r => r.steps);
         const mergedChildRun = {
           runIndex: c.runs.length,
@@ -918,11 +1017,11 @@
       } else if (selectionMode === 'subagents') {
         listBlocksHtml = children.length > 0
           ? children.map((c, i) => renderChildCard(c, i < 3)).join('')
-          : '<div class="empty">当前会话暂无 Subagent 或 Swarm 记录。</div>';
+          : `<div class="empty">${escapeHtml(t('noSubagents'))}</div>`;
       }
 
       const timingNotice = run.stepCount > 0 && run.timedSteps === 0
-        ? `<div class="notice">此轮暂无 Hook 毫秒计时（可能发生在插件启用前，或正在首步等待中）。</div>`
+        ? `<div class="notice">${escapeHtml(t('noTiming'))}</div>`
         : '';
 
       $app.innerHTML = `
@@ -932,7 +1031,7 @@
           <select id="run-select" class="run-select">${optionsHtml}</select>
           <span class="badge ${run.isRunning ? 'live' : ''}">
             <span class="dot"></span>
-            ${run.isRunning ? 'Running' : 'Done'}
+            ${escapeHtml(run.isRunning ? t('running') : t('done'))}
           </span>
         </div>
 
@@ -969,13 +1068,13 @@
       const models = data?.models || [];
 
       const modelsHtml = models.length === 0
-        ? `<div class="empty">${escapeHtml(selectedDate)} 暂无模型调用记录。</div>`
+        ? `<div class="empty">${escapeHtml(t('noDailyCalls', { date: selectedDate }))}</div>`
         : `
           <div class="card steps-card">
             <div class="run-block-head">
               <div class="run-block-top">
-                <div class="run-block-title">Models (${models.length})</div>
-                <span class="run-block-idx">${s.sessionCount} sessions · ${s.stepCount} steps</span>
+                <div class="run-block-title">${escapeHtml(t('modelsTitle', { n: models.length }))}</div>
+                <span class="run-block-idx">${escapeHtml(t('dailySummary', { sess: s.sessionCount, steps: s.stepCount }))}</span>
               </div>
             </div>
             <div class="step-list">
@@ -986,22 +1085,22 @@
                 const isMiss = m.cacheReadTokens === 0 && m.inputTokens > 0;
                 const isWarn = !isMiss && m.cacheHitRate < 50 && m.inputTokens > 0;
                 const pillHtml = isMiss
-                  ? `<span class="cache-pill miss">Cache Miss</span>`
+                  ? `<span class="cache-pill miss">${escapeHtml(t('cacheMiss'))}</span>`
                   : isWarn
-                    ? `<span class="cache-pill warn">Cache Miss · ${Math.round(m.cacheHitRate)}%</span>`
-                    : `<span class="cache-pill hit">Hit ${Math.round(m.cacheHitRate)}%</span>`;
+                    ? `<span class="cache-pill warn">${escapeHtml(t('cacheWarn', { pct: Math.round(m.cacheHitRate) }))}</span>`
+                    : `<span class="cache-pill hit">${escapeHtml(t('cacheHit', { pct: Math.round(m.cacheHitRate) }))}</span>`;
                 const tok = [
-                  tokChip('in', 'Input', m.inputTokens),
-                  tokChip('out', 'Output', m.outputTokens),
-                  tokChip('cache', 'Cache Read', m.cacheReadTokens),
-                  tokChip('total', 'Total', m.totalTokens),
+                  tokChip('in', t('tokIn'), m.inputTokens),
+                  tokChip('out', t('tokOut'), m.outputTokens),
+                  tokChip('cache', t('tokCache'), m.cacheReadTokens),
+                  tokChip('total', t('tokTotal'), m.totalTokens),
                 ].join('');
                 return `
                   <div class="step-row">
                     <div class="step-top">
                       <div class="step-title">
                         <span class="step-model" title="${escapeHtml(m.model)}">${escapeHtml(m.displayName || m.model)}</span>
-                        <span class="step-idx">${m.stepCount} steps · ${m.sessionCount} sess</span>
+                        <span class="step-idx">${escapeHtml(t('modelRowSummary', { steps: m.stepCount, sess: m.sessionCount }))}</span>
                       </div>
                       ${pillHtml}
                     </div>
@@ -1024,10 +1123,10 @@
         ${renderNavBarHtml()}
 
         <div class="date-bar">
-          <button type="button" id="date-prev" class="date-btn" title="前一天">‹</button>
+          <button type="button" id="date-prev" class="date-btn" title="${escapeHtml(t('prevDay'))}">‹</button>
           <input type="date" id="date-picker" class="date-input" value="${escapeHtml(selectedDate)}">
-          <button type="button" id="date-next" class="date-btn" title="后一天">›</button>
-          <button type="button" id="date-today" class="date-btn">Today</button>
+          <button type="button" id="date-next" class="date-btn" title="${escapeHtml(t('nextDay'))}">›</button>
+          <button type="button" id="date-today" class="date-btn">${escapeHtml(t('today'))}</button>
         </div>
 
         ${renderKpiAndTokenHtml(s)}
