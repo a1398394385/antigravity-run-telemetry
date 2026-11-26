@@ -124,18 +124,19 @@ function extractSubagentsFromTranscript(convId, transcriptRows) {
         }
       }
     }
-    if (row.source === 'MODEL' && row.type === 'GENERIC' && typeof row.content === 'string') {
-      if (!row.content.includes('conversationId') && !row.content.includes('conversation_id')) continue;
+    if (typeof row.content === 'string' && (row.content.includes('conversationId') || row.content.includes('conversation_id'))) {
       const matches = row.content.matchAll(/["']?(?:conversationId|conversation_id)["']?\s*[:=]\s*["']?([0-9a-f]{8}-[0-9a-f-]{12,})["']?/gi);
       for (const m of matches) {
         const cid = m[1];
         if (!cid || cid === convId || seen.has(cid)) continue;
         seen.add(cid);
-        let label = 'subagent';
-        for (const [, roleLabel] of callRoleById) {
-          label = roleLabel;
+        let label = (row.tool_call_id && callRoleById.get(row.tool_call_id)) || '';
+        if (!label) {
+          for (const [, roleLabel] of callRoleById) {
+            label = roleLabel;
+          }
         }
-        found.push({ conversationId: cid, kind: 'subagent', label });
+        found.push({ conversationId: cid, kind: 'subagent', label: label || 'subagent' });
       }
     }
   }
@@ -484,7 +485,12 @@ app.api('/api/telemetry', async (data) => {
     if (!childMap.has(item.conversationId)) childMap.set(item.conversationId, item);
   }
   for (const item of await fetchChildConversationsViaRpc(convId)) {
-    if (!childMap.has(item.conversationId)) childMap.set(item.conversationId, item);
+    const existing = childMap.get(item.conversationId);
+    if (!existing) {
+      childMap.set(item.conversationId, item);
+    } else if ((!existing.label || existing.label === 'subagent') && item.label && item.label !== 'subagent') {
+      existing.label = item.label;
+    }
   }
 
   let maxMtime = mainData.mtimeMs;

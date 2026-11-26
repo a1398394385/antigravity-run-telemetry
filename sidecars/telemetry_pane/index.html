@@ -1027,11 +1027,14 @@
       ].join('');
 
       const renderChildCard = (c, defaultExpanded) => {
-        const tag = `${c.kind === 'swarm' ? 'Swarm' : t('subagentTag')} · ${c.label}`;
+        const tag = c.kind === 'swarm' ? 'Swarm' : t('subagentTag');
         const allChildSteps = c.runs.flatMap(r => r.steps);
+        const rawPreview = c.runs[0]?.promptPreview || '';
+        const meaningfulPreview = rawPreview && rawPreview !== 'Initial run' ? rawPreview : '';
+        const meaningfulLabel = c.label && c.label !== 'subagent' ? c.label : '';
         const mergedChildRun = {
           runIndex: c.runs.length,
-          promptPreview: c.runs[0]?.promptPreview || c.label,
+          promptPreview: meaningfulLabel || meaningfulPreview || tag,
           stepCount: c.summary.stepCount,
           avgLatencyMs: c.summary.avgLatencyMs,
           effectiveTps: c.summary.effectiveTps,
