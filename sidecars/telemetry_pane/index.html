@@ -535,6 +535,9 @@
     .wrap.wrap-steps .step-tok {
       flex-wrap: wrap;
     }
+    .wrap.hide-model-meta .step-idx {
+      display: none;
+    }
     .step-cost {
       color: var(--rt-muted);
       font-weight: 500;
@@ -809,8 +812,16 @@
     }
 
     function syncUnifiedWrap() {
-      $app.classList.remove('wrap-summary', 'wrap-steps', 'wrap-tokens');
+      $app.classList.remove('wrap-summary', 'wrap-steps', 'wrap-tokens', 'hide-model-meta');
       if (activeTab === 'context') return;
+      if (activeTab === 'daily') {
+        for (const el of $app.querySelectorAll('.step-model')) {
+          if (el.scrollWidth > el.clientWidth + 1) {
+            $app.classList.add('hide-model-meta');
+            break;
+          }
+        }
+      }
       for (const el of $app.querySelectorAll('.token-grid')) {
         if (el.scrollWidth > el.clientWidth + 1) {
           $app.classList.add('wrap-tokens');
