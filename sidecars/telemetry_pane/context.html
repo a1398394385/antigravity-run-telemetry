@@ -23,6 +23,8 @@
     --rt-border: var(--border, #e3e6ec);
     --rt-text: var(--foreground, #181a1f);
     --rt-muted: var(--muted-foreground, #5c6678);
+    --rt-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --rt-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     --fg: var(--rt-text);
     --dim: var(--rt-muted);
     --line: var(--rt-border);
@@ -60,8 +62,9 @@
     overflow-x: hidden;
     background: transparent !important;
     color: var(--rt-text) !important;
-    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Roboto, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    font-family: var(--rt-sans) !important;
+    font-size: 13px;
+    line-height: 1.45;
   }
   ::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
@@ -957,17 +960,10 @@
   function categories(r) {
     const conv = r.categories.filter((c) => CONVERSATION[c.key]);
     const rest = r.categories.filter((c) => !CONVERSATION[c.key]);
-    const limit = num(r.limit_tokens);
-    const freeTok = num(r.free_tokens);
-    const freePct = limit ? `${(freeTok / limit * 100).toFixed(1)}%` : '-';
-    const freeVal = limit ? fmtTok(freeTok) : 'Unknown';
-    const free = `<div class="row"><span class="mark free"></span><span class="dim">Free space</span>`
-      + `<span class="tok num">${freeVal}</span><span class="p num">${freePct}</span></div>`;
     const note = r.heading === 'Token usage by category' ? '' : `<p class="note">${esc(r.heading)}</p>`;
     return `<section id="token-usage-section"><h2>Token usage</h2>${contextBarHtml(r)}${note}
       <div class="group">${conv.map(categoryRow).join('')}</div>
-      ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}
-      <div class="group">${free}${cacheRowHtml(r)}${outputRowHtml(r)}${speedRowHtml(r)}</div></section>`;
+      ${rest.length ? `<div class="group">${rest.map(categoryRow).join('')}</div>` : ''}</section>`;
   }
 
   function checkpoints(r) {
