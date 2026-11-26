@@ -512,15 +512,25 @@
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .wrap.force-wrap .run-block-summary,
-    .wrap.force-wrap .step-bottom {
+    .wrap.wrap-summary .run-block-summary {
       flex-direction: column;
       align-items: flex-start;
       gap: 5px;
     }
-    .wrap.force-wrap .run-block-tok,
-    .wrap.force-wrap .step-tok {
+    .wrap.wrap-summary .run-block-tok {
       flex-wrap: wrap;
+    }
+    .wrap.wrap-steps .step-bottom {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+    }
+    .wrap.wrap-steps .step-tok {
+      flex-wrap: wrap;
+    }
+    .tok-chip.cost {
+      color: var(--rt-text);
+      font-weight: 600;
     }
     .step-lat {
       color: var(--rt-text);
@@ -750,6 +760,14 @@
       return `<span class="kpi-unit" style="margin-left:0;margin-right:2px">$</span>${usd.toFixed(3)}`;
     }
 
+    function fmtUsdInline(usd) {
+      if (usd === null || usd === undefined || !Number.isFinite(Number(usd))) return '';
+      const n = Number(usd);
+      if (n < 0.01) return `$${n.toFixed(4)}`;
+      if (n < 0.1) return `$${n.toFixed(3)}`;
+      return `$${n.toFixed(2)}`;
+    }
+
     function escapeHtml(str) {
       return String(str || '')
         .replace(/&/g, '&amp;')
@@ -784,20 +802,20 @@
     }
 
     function syncUnifiedWrap() {
-      if (activeTab === 'context') {
-        $app.classList.remove('force-wrap');
-        return;
-      }
-      $app.classList.remove('force-wrap');
-      const rows = $app.querySelectorAll('.run-block-summary, .step-bottom');
-      let overflow = false;
-      for (const el of rows) {
+      $app.classList.remove('wrap-summary', 'wrap-steps');
+      if (activeTab === 'context') return;
+      for (const el of $app.querySelectorAll('.run-block-summary')) {
         if (el.scrollWidth > el.clientWidth + 1) {
-          overflow = true;
+          $app.classList.add('wrap-summary');
           break;
         }
       }
-      if (overflow) $app.classList.add('force-wrap');
+      for (const el of $app.querySelectorAll('.step-bottom')) {
+        if (el.scrollWidth > el.clientWidth + 1) {
+          $app.classList.add('wrap-steps');
+          break;
+        }
+      }
     }
 
     if (typeof ResizeObserver === 'function') {
@@ -927,11 +945,13 @@
       const stepsHtml = isExpanded ? reversedSteps.map(s => {
         const lat = s.latencyMs !== null ? fmtMsPlain(s.latencyMs) : '—';
         const tps = s.tps !== null ? `${s.tps} t/s` : '—';
+        const stepCostStr = fmtUsdInline(s.costUsd);
         const tok = [
           tokChip('in', t('tokIn'), s.inputTokens),
           tokChip('out', t('tokOut'), s.outputTokens),
           tokChip('cache', t('tokCache'), s.cacheReadTokens),
-        ].join('');
+          stepCostStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(stepCostStr)}</span>` : '',
+        ].filter(Boolean).join('');
         const cacheDenom = s.inputTokens + s.cacheReadTokens;
         const hitPct = cacheDenom > 0 ? Math.round((s.cacheReadTokens / cacheDenom) * 100) : 0;
         const isFullMiss = s.cacheReadTokens === 0 && s.inputTokens > 0;
@@ -964,12 +984,14 @@
       const title = r.promptPreview || t('runFallback', { n: r.runIndex });
       const avgLat = r.avgLatencyMs !== null ? fmtMsPlain(r.avgLatencyMs) : '—';
       const avgTps = r.effectiveTps !== null ? `${r.effectiveTps} t/s` : '—';
+      const runCostStr = fmtUsdInline(r.costUsd);
       const runTok = [
         tokChip('in', t('tokIn'), r.inputTokens),
         tokChip('out', t('tokOut'), r.outputTokens),
         tokChip('cache', t('tokCache'), r.cacheReadTokens),
         tokChip('total', t('tokTotal'), r.totalTokens),
-      ].join('');
+        runCostStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(runCostStr)}</span>` : '',
+      ].filter(Boolean).join('');
       const badgeHtml = badgeText ? `<span class="agent-pill">${escapeHtml(badgeText)}</span>` : '';
 
       const caret = isExpanded ? '▾' : '▸';
@@ -1042,6 +1064,7 @@
           outputTokens: c.summary.outputTokens,
           cacheReadTokens: c.summary.cacheReadTokens,
           totalTokens: c.summary.totalTokens,
+          costUsd: c.summary.costUsd,
           steps: allChildSteps,
         };
         return renderRunBlockHtml(mergedChildRun, tag, `child-${c.conversationId}`, defaultExpanded);
@@ -1123,7 +1146,7 @@
               ${models.map(m => {
                 const lat = m.avgLatencyMs !== null ? fmtMsPlain(m.avgLatencyMs) : '—';
                 const tps = m.effectiveTps !== null ? `${m.effectiveTps} t/s` : '—';
-                const cost = m.costUsd !== null ? (m.costUsd < 0.01 ? `$${m.costUsd.toFixed(4)}` : `$${m.costUsd.toFixed(3)}`) : '—';
+                const costStr = fmtUsdInline(m.costUsd);
                 const isMiss = m.cacheReadTokens === 0 && m.inputTokens > 0;
                 const isWarn = !isMiss && m.cacheHitRate < 50 && m.inputTokens > 0;
                 const pillHtml = isMiss
@@ -1136,7 +1159,8 @@
                   tokChip('out', t('tokOut'), m.outputTokens),
                   tokChip('cache', t('tokCache'), m.cacheReadTokens),
                   tokChip('total', t('tokTotal'), m.totalTokens),
-                ].join('');
+                  costStr ? `<span class="tok-chip cost" title="${escapeHtml(t('estCost'))}">${escapeHtml(costStr)}</span>` : '',
+                ].filter(Boolean).join('');
                 return `
                   <div class="step-row">
                     <div class="step-top">
@@ -1150,7 +1174,6 @@
                       <div class="step-perf-group">
                         <span class="step-lat">${lat}</span>
                         <span class="step-tps">${tps}</span>
-                        <span class="step-lat">${cost}</span>
                       </div>
                       <span class="step-tok">${tok}</span>
                     </div>
